@@ -264,6 +264,162 @@ static inline uint8_t get_prefix_op_bp(void)
 static Expr *parse_expr(Parser *p);
 static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
 
+static inline bool token_equal(Token t, const char *str)
+{
+    return t.len == strlen(str) && strncmp(t.start, str, t.len) == 0;
+}
+
+static bool is_type(Token t)
+{
+    if (t.kind == TK_IDENT)
+        TODO("named types not implemented yet");
+    else if (t.kind != TK_KW)
+        return false;
+
+    const char *types[] = {
+        "void", "bool", "_Bool", "char", "short", "int", "long",
+        "float", "double", "signed", "unsigned", "struct", "union", "enum",
+        "const", "volatile", "restrict"
+    };
+    for (size_t i = 0; i < sizeof(types) / sizeof(*types); ++i)
+        if (token_equal(t, types[i]))
+            return true;
+    return false;
+}
+
+static Type parse_type(Parser *p)
+{
+    if (parser_at_eof(p))
+        diag_fatal_at(p->tokens[p->pos].loc, "unexpected end of file encountered while parsing type");
+
+    Type ty = { 0 };
+    enum {
+        VOID     = 1 << 0,
+        BOOL     = 1 << 2,
+        CHAR     = 1 << 4,
+        SHORT    = 1 << 6,
+        INT      = 1 << 8,
+        LONG     = 1 << 10,
+        FLOAT    = 1 << 12,
+        DOUBLE   = 1 << 14,
+        OTHER    = 1 << 16,
+        SIGNED   = 1 << 17,
+        UNSIGNED = 1 << 18,
+    };
+
+    // Built-in types
+    uint32_t counter = 0;
+    Token t = p->tokens[p->pos];
+    Loc type_beg = t.loc;
+    parser_bump(p);
+    while (is_type(t)) {
+        // TODO: implement named types
+        if (token_equal(t, "void"))
+            counter += VOID;
+        else if (token_equal(t, "bool"))
+            counter += BOOL;
+        else if (token_equal(t, "char"))
+            counter += CHAR;
+        else if (token_equal(t, "short"))
+            counter += SHORT;
+        else if (token_equal(t, "int"))
+            counter += INT;
+        else if (token_equal(t, "long"))
+            counter += LONG;
+        else if (token_equal(t, "float"))
+            counter += FLOAT;
+        else if (token_equal(t, "double"))
+            counter += DOUBLE;
+        else if (token_equal(t, "signed"))
+            counter |= SIGNED;
+        else if (token_equal(t, "unsigned"))
+            counter |= UNSIGNED;
+        else
+            UNREACHABLE("parse_type");
+
+        t = p->tokens[p->pos];
+        parser_bump(p);
+    }
+
+    switch (counter) {
+    case VOID:
+        ty.kind = TYPE_VOID;
+        break;
+    case VOID + SIGNED:
+    case VOID + UNSIGNED:
+        diag_fatal_at(type_beg, "type `void` cannot be `signed` or `unsigned`");
+    case BOOL:
+        ty.kind = TYPE_BOOL;
+        break;
+    case BOOL + SIGNED:
+    case BOOL + UNSIGNED:
+        diag_fatal_at(type_beg, "type `bool` cannot be `signed` or `unsigned`");
+    case CHAR:
+    case CHAR + SIGNED:
+        ty.kind = TYPE_CHAR;
+        ty._signed = true;
+        break;
+    case CHAR + UNSIGNED:
+        ty.kind = TYPE_CHAR;
+        ty._signed = false;
+        break;
+    case SHORT:
+    case SHORT + INT:
+    case SHORT + SIGNED:
+    case SHORT + INT + SIGNED:
+        ty.kind = TYPE_SHORT;
+        ty._signed = true;
+        break;
+    case SHORT + UNSIGNED:
+    case SHORT + INT + UNSIGNED:
+        ty.kind = TYPE_SHORT;
+        ty._signed = false;
+        break;
+    case INT:
+    case INT + SIGNED:
+    case SIGNED:
+        ty.kind = TYPE_INT;
+        ty._signed = true;
+        break;
+    case UNSIGNED:
+    case UNSIGNED + INT:
+        ty.kind = TYPE_INT;
+        ty._signed = false;
+        break;
+    case LONG:
+    case LONG + INT:
+    case LONG + LONG:
+    case LONG + LONG + INT:
+    case LONG + SIGNED:
+    case LONG + INT + SIGNED:
+    case LONG + LONG + SIGNED:
+    case LONG + LONG + INT + SIGNED:
+        ty.kind = TYPE_LONG;
+        ty._signed = true;
+        break;
+    case LONG + UNSIGNED:
+    case LONG + INT + UNSIGNED:
+    case LONG + LONG + UNSIGNED:
+    case LONG + LONG + INT + UNSIGNED:
+        ty.kind = TYPE_LONG;
+        ty._signed = false;
+        break;
+    case FLOAT:
+        ty.kind = TYPE_FLOAT;
+        break;
+    case DOUBLE:
+        ty.kind = TYPE_DOUBLE;
+        break;
+    case LONG + DOUBLE:
+        ty.kind = TYPE_LDOUBLE;
+        break;
+    default:
+        diag_fatal_at(type_beg, "invalid type");
+    }
+
+    return ty;
+}
+
 // Parses and returns the arguments in a function call while storing the
 // argument count in `argc`. Must be called after consuming the open paren of
 // the function call. After returning the parser will be at the closing paren.
@@ -794,7 +950,13 @@ Parser parser_init_from_file_path(Arena *a, const char *file_path)
 
 void parse_transl_unit(Parser *p)
 {
-    Expr *e = parse_expr(p);
-    print_expr_as_sexp(e, 0);
-    printf("\n");
+    Type ty = parse_type(p);
+    /* Expr *e = parse_expr(p); */
+    /* print_expr_as_sexp(e, 0); */
+    /* printf("\n"); */
+    printf("Type {\n");
+    printf("    .kind = %d\n", ty.kind);
+    printf("    ._signed = %d\n", ty._signed);
+    printf("    .loc = { .file_path = %s, .line = %zu, .col = %zu }\n", ty.loc.file_path, ty.loc.line, ty.loc.col);
+    printf("}");
 }

@@ -36,6 +36,7 @@ typedef struct Type Type;
 struct Type {
     TypeKind kind;
     Loc loc;
+    bool _signed;
     union {
         struct {
             Type *base;
@@ -108,6 +109,7 @@ typedef enum {
     EXPR_STR,       // string literal
     EXPR_NUM,       // numeric literal
     EXPR_NAME,      // variable/function name
+    EXPR_CLIT,      // compound literal
     EXPR_UNOP,      // -x, ~x, !x, *x, &x, ++x, x++, --x, x--
     EXPR_BINOP,     // +, -, *, /, %, etc.
     EXPR_TERNOP,    // cond ? then : else
@@ -117,8 +119,9 @@ typedef enum {
     EXPR_FIELD,     // s.x
     EXPR_ARROW,     // p->x
     EXPR_CAST,      // (int) expr
-    EXPR_SIZEOF_TY, // sizeof(int)
+    EXPR_SIZEOF_TY, // sizeof(Type)
     EXPR_SIZEOF_EX, // sizeof expr
+    EXPR_ALIGNOF,   // _Alignof(Type)
     EXPR_COUNT,
 } ExprKind;
 
