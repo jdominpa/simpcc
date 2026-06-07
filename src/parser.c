@@ -198,7 +198,7 @@ static Type parse_type(Parser *p)
     // Built-in types
     uint32_t counter = 0;
     Token t = p->tokens[p->pos];
-    Loc type_beg = t.loc;
+    ty.loc = t.loc;
     while (is_type(t)) {
         if (token_equal(t, "void"))
             counter += VOID;
@@ -232,16 +232,16 @@ static Type parse_type(Parser *p)
         ty.kind = TYPE_VOID;
         break;
     case VOID + SIGNED:
-        diag_fatal_at(type_beg, "type `void` is incompatible with type modifier `signed`");
+        diag_fatal_at(ty.loc, "type `void` is incompatible with type modifier `signed`");
     case VOID + UNSIGNED:
-        diag_fatal_at(type_beg, "type `void` is incompatible with type modifier `unsigned`");
+        diag_fatal_at(ty.loc, "type `void` is incompatible with type modifier `unsigned`");
     case BOOL:
         ty.kind = TYPE_BOOL;
         break;
     case BOOL + SIGNED:
-        diag_fatal_at(type_beg, "type `bool` is incompatible with type modifier `unsigned`");
+        diag_fatal_at(ty.loc, "type `bool` is incompatible with type modifier `unsigned`");
     case BOOL + UNSIGNED:
-        diag_fatal_at(type_beg, "type `bool` is incompatible with type modifier `unsigned`");
+        diag_fatal_at(ty.loc, "type `bool` is incompatible with type modifier `unsigned`");
     case CHAR:
     case CHAR + SIGNED:
         ty.kind = TYPE_CHAR;
@@ -302,7 +302,7 @@ static Type parse_type(Parser *p)
         ty.kind = TYPE_LDOUBLE;
         break;
     default:
-        diag_fatal_at(type_beg, "invalid type");
+        diag_fatal_at(ty.loc, "invalid type");
     }
 
     return ty;
@@ -535,6 +535,16 @@ static Expr *parse_expr_head(Parser *p)
                 e->kind = EXPR_SIZEOF_EX;
                 e->sizeof_expr = parse_expr(p);
             }
+            return e;
+        } else if (token_equal(t, "_Alignof") || token_equal(t, "alignof")) {
+            if (!parser_expect(p, TK_OPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            Expr *e = arena_alloc(p->a, Expr);
+            e->kind = EXPR_ALIGNOF;
+            e->loc = t.loc;
+            e->alignof_ty = parse_type(p);
+            if (!parser_expect(p, TK_CPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
             return e;
         } else
             diag_fatal_at(t.loc, "unexpected keyword found while parsing expression");
@@ -988,6 +998,9 @@ static void print_expr_as_sexp(Expr *e, uint32_t indent)
         printf("sizeof ");
         indent += 7;
         print_expr_as_sexp(e->sizeof_expr, indent);
+        break;
+    case EXPR_ALIGNOF:
+        printf("alignof(%s)", type_to_str(e->alignof_ty));
         break;
     default:
         UNREACHABLE("print_expr_as_sexp");
