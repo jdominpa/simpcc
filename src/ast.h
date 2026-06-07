@@ -170,8 +170,9 @@ struct Expr {
             Type *type;
             Expr *expr;
         } cast;
-        Type *sizeof_ty;
+        Type sizeof_ty;
         Expr *sizeof_expr;
+        Type alignof_ty;
     };
 };
 

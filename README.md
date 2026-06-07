@@ -1,3 +1,3 @@
-# cutecc: The CuteCCompiler/CutesyCompiler/CutesyC
+# cutecc: The CuteCCompiler/CutesyCompiler
 
 WIP

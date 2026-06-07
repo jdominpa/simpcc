@@ -13,7 +13,7 @@
 #include "lexer.h"
 
 // TODO: maybe this should be moved somewhere else
-const char *token_kind_to_str[] = {
+static const char *token_kind_to_str[] = {
     [TK_INVALID] = "invalid",
     [TK_EOF] = "EOF",
     [TK_IDENT] = "ident",
@@ -67,6 +67,39 @@ const char *token_kind_to_str[] = {
     [TK_MINUS_GT] = "->",
     [TK_QUESTION] = "?",
 };
+
+static const char *type_to_str(Type ty)
+{
+    switch (ty.kind) {
+    case TYPE_VOID: return "void";
+    case TYPE_BOOL: return "bool";
+    case TYPE_CHAR:
+        if (ty._signed)
+            return "char";
+        else
+            return "unsigned char";
+    case TYPE_SHORT:
+        if (ty._signed)
+            return "short";
+        else
+            return "unsigned short";
+    case TYPE_INT:
+        if (ty._signed)
+            return "int";
+        else
+            return "unsigned int";
+    case TYPE_LONG:
+        if (ty._signed)
+            return "long";
+        else
+            return "unsigned long";
+    case TYPE_FLOAT: return "float";
+    case TYPE_DOUBLE: return "double";
+    case TYPE_LDOUBLE: return "long double";
+    default:
+        UNREACHABLE("type_kind_to_str");
+    }
+}
 
 // Checks if the current token is of TokenKind `kind`, and returns `true` if so.
 static inline bool parser_check(Parser *p, TokenKind kind)
@@ -199,14 +232,16 @@ static Type parse_type(Parser *p)
         ty.kind = TYPE_VOID;
         break;
     case VOID + SIGNED:
+        diag_fatal_at(type_beg, "type `void` is incompatible with type modifier `signed`");
     case VOID + UNSIGNED:
-        diag_fatal_at(type_beg, "type `void` cannot be `signed` or `unsigned`");
+        diag_fatal_at(type_beg, "type `void` is incompatible with type modifier `unsigned`");
     case BOOL:
         ty.kind = TYPE_BOOL;
         break;
     case BOOL + SIGNED:
+        diag_fatal_at(type_beg, "type `bool` is incompatible with type modifier `unsigned`");
     case BOOL + UNSIGNED:
-        diag_fatal_at(type_beg, "type `bool` cannot be `signed` or `unsigned`");
+        diag_fatal_at(type_beg, "type `bool` is incompatible with type modifier `unsigned`");
     case CHAR:
     case CHAR + SIGNED:
         ty.kind = TYPE_CHAR;
@@ -487,6 +522,22 @@ static Expr *parse_expr_head(Parser *p)
         e->name = arena_strndup(p->a, t.start, t.len);
         return e;
     }
+    case TK_KW:
+        if (token_equal(t, "sizeof")) {
+            Expr *e = arena_alloc(p->a, Expr);
+            e->loc = t.loc;
+            if (parser_eat(p, TK_OPAREN)) {
+                e->kind = EXPR_SIZEOF_TY;
+                e->sizeof_ty = parse_type(p);
+                if (!parser_expect(p, TK_CPAREN))
+                    UNREACHABLE("parser_expect is currently nonreturnable");
+            } else {
+                e->kind = EXPR_SIZEOF_EX;
+                e->sizeof_expr = parse_expr(p);
+            }
+            return e;
+        } else
+            diag_fatal_at(t.loc, "unexpected keyword found while parsing expression");
     // TODO: parse character literals
     case TK_STR: {
         Expr *e = arena_alloc(p->a, Expr);
@@ -930,6 +981,14 @@ static void print_expr_as_sexp(Expr *e, uint32_t indent)
         print_expr_as_sexp(e->field._struct, indent);
         printf("->%s", e->field.field);
         break;
+    case EXPR_SIZEOF_TY:
+        printf("sizeof(%s)", type_to_str(e->sizeof_ty));
+        break;
+    case EXPR_SIZEOF_EX:
+        printf("sizeof ");
+        indent += 7;
+        print_expr_as_sexp(e->sizeof_expr, indent);
+        break;
     default:
         UNREACHABLE("print_expr_as_sexp");
     }
@@ -959,13 +1018,7 @@ Parser parser_init_from_file_path(Arena *a, const char *file_path)
 
 void parse_transl_unit(Parser *p)
 {
-    Type ty = parse_type(p);
-    /* Expr *e = parse_expr(p); */
-    /* print_expr_as_sexp(e, 0); */
-    /* printf("\n"); */
-    printf("Type {\n");
-    printf("    .kind = %d\n", ty.kind);
-    printf("    ._signed = %d\n", ty._signed);
-    printf("    .loc = { .file_path = %s, .line = %zu, .col = %zu }\n", ty.loc.file_path, ty.loc.line, ty.loc.col);
-    printf("}");
+    Expr *e = parse_expr(p);
+    print_expr_as_sexp(e, 0);
+    printf("\n");
 }
