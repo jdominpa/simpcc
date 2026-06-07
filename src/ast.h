@@ -112,16 +112,16 @@ typedef enum {
     EXPR_CLIT,      // compound literal
     EXPR_UNOP,      // -x, ~x, !x, *x, &x, ++x, x++, --x, x--
     EXPR_BINOP,     // +, -, *, /, %, etc.
-    EXPR_TERNOP,    // cond ? then : else
-    EXPR_FN_CALL,   // f(args)
-    EXPR_ASSIGN,    // Type var = value
-    EXPR_INDEX,     // a[i]
-    EXPR_FIELD,     // s.x
-    EXPR_ARROW,     // p->x
-    EXPR_CAST,      // (int) expr
-    EXPR_SIZEOF_TY, // sizeof(Type)
-    EXPR_SIZEOF_EX, // sizeof expr
-    EXPR_ALIGNOF,   // _Alignof(Type)
+    EXPR_TERNOP,    // expr "?" expr ":" expr
+    EXPR_FN_CALL,   // name "(" args ")"
+    EXPR_ASSIGN,    // Type name "=" expr
+    EXPR_INDEX,     // name "[" expr "]"
+    EXPR_FIELD,     // name "." name
+    EXPR_ARROW,     // name "->" name
+    EXPR_CAST,      // "(" Type ")" expr
+    EXPR_SIZEOF_TY, // "sizeof(" Type ")"
+    EXPR_SIZEOF_EX, // "sizeof" expr
+    EXPR_ALIGNOF,   // "_Alignof(" Type ")"
     EXPR_COUNT,
 } ExprKind;
 

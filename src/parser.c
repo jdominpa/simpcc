@@ -571,27 +571,35 @@ static Expr *parse_expr_head(Parser *p)
             UNREACHABLE("parser_expect is currently nonreturnable");
         return e;
     }
+    // "+" expr
     case TK_PLUS:
         return new_unop_expr(p->a, t.loc, UNOP_POS,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "-" expr
     case TK_MINUS:
         return new_unop_expr(p->a, t.loc, UNOP_NEG,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "!" expr
     case TK_BANG:
         return new_unop_expr(p->a, t.loc, UNOP_NOT,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "~" expr
     case TK_TILDE:
         return new_unop_expr(p->a, t.loc, UNOP_BIT_NOT,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "*" expr
     case TK_STAR:
         return new_unop_expr(p->a, t.loc, UNOP_DEREF,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "&" expr
     case TK_AMP:
         return new_unop_expr(p->a, t.loc, UNOP_ADDR,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "++" expr
     case TK_PLUS_PLUS:
         return new_unop_expr(p->a, t.loc, UNOP_PRE_INC,
                              parse_expr_bp(p, get_prefix_op_bp()));
+    // "--" expr
     case TK_MINUS_MINUS:
         return new_unop_expr(p->a, t.loc, UNOP_PRE_DEC,
                              parse_expr_bp(p, get_prefix_op_bp()));
