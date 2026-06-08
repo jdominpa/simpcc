@@ -533,7 +533,7 @@ static Expr *parse_expr_head(Parser *p)
                     UNREACHABLE("parser_expect is currently nonreturnable");
             } else {
                 e->kind = EXPR_SIZEOF_EX;
-                e->sizeof_expr = parse_expr(p);
+                e->sizeof_expr = parse_expr_bp(p, get_prefix_op_bp());
             }
             return e;
         } else if (token_equal(t, "_Alignof") || token_equal(t, "alignof")) {
