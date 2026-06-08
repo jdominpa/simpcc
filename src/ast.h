@@ -167,7 +167,7 @@ struct Expr {
             const char *field;
         } field;
         struct {
-            Type *type;
+            Type type;
             Expr *expr;
         } cast;
         Type sizeof_ty;

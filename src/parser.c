@@ -565,12 +565,26 @@ static Expr *parse_expr_head(Parser *p)
             e->val = e->val * 10 + (t.start[i] - '0');
         return e;
     }
-    case TK_OPAREN: {
-        Expr *e = parse_expr(p);
-        if (!parser_expect(p, TK_CPAREN))
-            UNREACHABLE("parser_expect is currently nonreturnable");
-        return e;
-    }
+    case TK_OPAREN:
+        if (is_type(p->tokens[p->pos])) {
+            // Cast
+            // "(" Type ")" expr
+            Expr *e = arena_alloc(p->a, Expr);
+            e->kind = EXPR_CAST;
+            e->loc = t.loc;
+            e->cast.type = parse_type(p);
+            if (!parser_expect(p, TK_CPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            e->cast.expr = parse_expr_bp(p, get_prefix_op_bp());
+            return e;
+        } else {
+            // Parenthesized expression
+            // "(" expr ")"
+            Expr *e = parse_expr(p);
+            if (!parser_expect(p, TK_CPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            return e;
+        }
     // "+" expr
     case TK_PLUS:
         return new_unop_expr(p->a, t.loc, UNOP_POS,
@@ -998,6 +1012,12 @@ static void print_expr_as_sexp(Expr *e, uint32_t indent)
     case EXPR_ARROW:
         print_expr_as_sexp(e->field._struct, indent);
         printf("->%s", e->field.field);
+        break;
+    case EXPR_CAST:
+        indent += strlen(type_to_str(e->cast.type)) + 1;
+        printf("%s(", type_to_str(e->cast.type));
+        print_expr_as_sexp(e->cast.expr, indent);
+        printf(")");
         break;
     case EXPR_SIZEOF_TY:
         printf("sizeof(%s)", type_to_str(e->sizeof_ty));
