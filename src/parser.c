@@ -74,22 +74,22 @@ static const char *type_to_str(Type ty)
     case TYPE_VOID: return "void";
     case TYPE_BOOL: return "bool";
     case TYPE_CHAR:
-        if (ty._signed)
+        if (ty.is_signed)
             return "char";
         else
             return "unsigned char";
     case TYPE_SHORT:
-        if (ty._signed)
+        if (ty.is_signed)
             return "short";
         else
             return "unsigned short";
     case TYPE_INT:
-        if (ty._signed)
+        if (ty.is_signed)
             return "int";
         else
             return "unsigned int";
     case TYPE_LONG:
-        if (ty._signed)
+        if (ty.is_signed)
             return "long";
         else
             return "unsigned long";
@@ -263,34 +263,34 @@ static Type parse_type(Parser *p)
     case CHAR:
     case CHAR + SIGNED:
         ty.kind = TYPE_CHAR;
-        ty._signed = true;
+        ty.is_signed = true;
         break;
     case CHAR + UNSIGNED:
         ty.kind = TYPE_CHAR;
-        ty._signed = false;
+        ty.is_signed = false;
         break;
     case SHORT:
     case SHORT + INT:
     case SHORT + SIGNED:
     case SHORT + INT + SIGNED:
         ty.kind = TYPE_SHORT;
-        ty._signed = true;
+        ty.is_signed = true;
         break;
     case SHORT + UNSIGNED:
     case SHORT + INT + UNSIGNED:
         ty.kind = TYPE_SHORT;
-        ty._signed = false;
+        ty.is_signed = false;
         break;
     case INT:
     case INT + SIGNED:
     case SIGNED:
         ty.kind = TYPE_INT;
-        ty._signed = true;
+        ty.is_signed = true;
         break;
     case UNSIGNED:
     case UNSIGNED + INT:
         ty.kind = TYPE_INT;
-        ty._signed = false;
+        ty.is_signed = false;
         break;
     case LONG:
     case LONG + INT:
@@ -301,14 +301,14 @@ static Type parse_type(Parser *p)
     case LONG + LONG + SIGNED:
     case LONG + LONG + INT + SIGNED:
         ty.kind = TYPE_LONG;
-        ty._signed = true;
+        ty.is_signed = true;
         break;
     case LONG + UNSIGNED:
     case LONG + INT + UNSIGNED:
     case LONG + LONG + UNSIGNED:
     case LONG + LONG + INT + UNSIGNED:
         ty.kind = TYPE_LONG;
-        ty._signed = false;
+        ty.is_signed = false;
         break;
     case FLOAT:
         ty.kind = TYPE_FLOAT;

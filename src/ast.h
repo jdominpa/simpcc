@@ -36,7 +36,7 @@ typedef struct Type Type;
 struct Type {
     TypeKind kind;
     Loc loc;
-    bool _signed;
+    bool is_signed;
     union {
         struct {
             Type *base;
