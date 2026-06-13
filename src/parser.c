@@ -175,6 +175,24 @@ static bool is_type(Token t)
     return false;
 }
 
+static bool is_castable_type(Type ty)
+{
+    switch (ty.kind) {
+    case TYPE_VOID:
+    case TYPE_CHAR:
+    case TYPE_SHORT:
+    case TYPE_INT:
+    case TYPE_LONG:
+    case TYPE_FLOAT:
+    case TYPE_DOUBLE:
+    case TYPE_LDOUBLE:
+        return true;
+    default:
+        return false;
+    }
+}
+
+// TODO: parse pointer types
 static Type parse_type(Parser *p)
 {
     if (parser_at_eof(p))
@@ -573,6 +591,8 @@ static Expr *parse_expr_head(Parser *p)
             e->kind = EXPR_CAST;
             e->loc = t.loc;
             e->cast.type = parse_type(p);
+            if (!is_castable_type(e->cast.type))
+                diag_fatal_at(e->cast.type.loc, "could not cast to type `%s`, only arithmetic and pointer types are castable", type_to_str(e->cast.type));
             if (!parser_expect(p, TK_CPAREN))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             e->cast.expr = parse_expr_bp(p, get_prefix_op_bp());

@@ -25,10 +25,10 @@ typedef enum {
     TYPE_PTR,
     TYPE_FUNC,
     TYPE_ARRAY,
-    TYPE_VLA, // variable length array
+    TYPE_VLA,     // variable length array
     TYPE_STRUCT,
     TYPE_UNION,
-    TYPE_NAMED,  // typedef types
+    TYPE_NAMED,   // typedef types
     TYPE_COUNT,
 } TypeKind;
 
