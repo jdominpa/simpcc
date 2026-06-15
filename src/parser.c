@@ -96,6 +96,28 @@ static const char *type_to_str(Type ty)
     case TYPE_FLOAT: return "float";
     case TYPE_DOUBLE: return "double";
     case TYPE_LDOUBLE: return "long double";
+    case TYPE_PTR: {
+        // Count number of stars
+        int ptr_count = 0;
+        Type *base = &ty;
+        while (base->kind == TYPE_PTR) {
+            ptr_count++;
+            base = base->ptr.base;
+        }
+
+        // Base type string
+        const char *base_str = type_to_str(*base);
+
+        // Stars string
+        char stars[ptr_count + 1];
+        memset(stars, '*', ptr_count);
+        stars[ptr_count] = '\0';
+
+        // Full type string
+        static char buf[64];
+        sprintf(buf, "%s %s", base_str, stars);
+        return buf;
+    }
     default:
         UNREACHABLE("type_kind_to_str");
     }
@@ -186,6 +208,7 @@ static bool is_castable_type(Type ty)
     case TYPE_FLOAT:
     case TYPE_DOUBLE:
     case TYPE_LDOUBLE:
+    case TYPE_PTR:
         return true;
     default:
         return false;
@@ -321,6 +344,14 @@ static Type parse_type(Parser *p)
         break;
     default:
         diag_fatal_at(ty.loc, "invalid type");
+    }
+
+    // Check for pointer suffixes
+    while (parser_eat(p, TK_STAR)) {
+        Type *base = arena_alloc(p->a, Type);
+        *base = ty;
+        ty.kind = TYPE_PTR;
+        ty.ptr.base = base;
     }
 
     return ty;
@@ -1035,9 +1066,8 @@ static void print_expr_as_sexp(Expr *e, uint32_t indent)
         break;
     case EXPR_CAST:
         indent += strlen(type_to_str(e->cast.type)) + 1;
-        printf("%s(", type_to_str(e->cast.type));
+        printf("(%s) ", type_to_str(e->cast.type));
         print_expr_as_sexp(e->cast.expr, indent);
-        printf(")");
         break;
     case EXPR_SIZEOF_TY:
         printf("sizeof(%s)", type_to_str(e->sizeof_ty));
