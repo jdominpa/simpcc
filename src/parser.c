@@ -566,9 +566,9 @@ static Expr *parse_expr_head(Parser *p)
     switch (t.kind) {
     case TK_IDENT: {
         Expr *e = arena_alloc(p->a, Expr);
-        e->kind = EXPR_NAME;
+        e->kind = EXPR_IDENT;
         e->loc = t.loc;
-        e->name = arena_strndup(p->a, t.start, t.len);
+        e->ident = arena_strndup(p->a, t.start, t.len);
         return e;
     }
     case TK_KW:
@@ -597,7 +597,8 @@ static Expr *parse_expr_head(Parser *p)
             return e;
         } else
             diag_fatal_at(t.loc, "unexpected keyword found while parsing expression");
-    // TODO: parse character literals
+    case TK_CHAR:
+        TODO("implement parsing of character literals");
     case TK_STR: {
         Expr *e = arena_alloc(p->a, Expr);
         e->kind = EXPR_STR;
@@ -669,7 +670,8 @@ static Expr *parse_expr_head(Parser *p)
         return new_unop_expr(p->a, t.loc, UNOP_PRE_DEC,
                              parse_expr_bp(p, get_prefix_op_bp()));
     default:
-        // TODO: return EXPR_ERROR and try to recover from unexpected expression
+        // TODO: use `diag_report_at` and try to recover from unexpected
+        // expression
         diag_fatal_at(t.loc, "unexpected expression `%.*s`", t.len, t.start);
     }
 }
@@ -739,9 +741,9 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
 
         // Function call
         if (parser_eat(p, TK_OPAREN)) {
-            if (e->kind != EXPR_NAME)
+            if (e->kind != EXPR_IDENT)
                 diag_fatal_at(e->loc, "invalid identifier used as function name");
-            const char *fn_name = e->name;
+            const char *fn_name = e->ident;
             e->kind = EXPR_FN_CALL;
             e->fn_call.fn_name = fn_name;
             e->fn_call.args = parse_fn_call_args(p, &e->fn_call.argc);
@@ -811,8 +813,8 @@ static void print_expr_as_sexp(Expr *e, uint32_t indent)
     case EXPR_NUM:
         printf("%d", e->val);
         break;
-    case EXPR_NAME:
-        printf("%s", e->name);
+    case EXPR_IDENT:
+        printf("%s", e->ident);
         break;
     case EXPR_UNOP:
         switch (e->unop.kind) {
