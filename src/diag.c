@@ -33,7 +33,7 @@ noreturn void diag_fatal(const char *fmt, ...)
     va_list args;
     va_start(args, fmt);
 
-    fprintf(stderr, "cutecc: fatal error: ");
+    fprintf(stderr, "simpcc: fatal error: ");
     vfprintf(stderr, fmt, args);
     fprintf(stderr, "\n");
 

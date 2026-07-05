@@ -14,14 +14,14 @@ int main(int argc, char **argv)
     Nob_Cmd cmd = { 0 };
     const char *src_files[] = {
         "arena",
-        "cutecc",
+        "simpcc",
         "diag",
         "lexer",
         "parser",
     };
 
     nob_cmd_append(&cmd, "cc", CFLAGS);
-    nob_cmd_append(&cmd, "-o", BUILD_DIR"cutecc");
+    nob_cmd_append(&cmd, "-o", BUILD_DIR"simpcc");
     for (size_t i = 0; i < NOB_ARRAY_LEN(src_files); ++i)
         nob_cmd_append(&cmd, nob_temp_sprintf(SRC_DIR"%s.c", src_files[i]));
 
