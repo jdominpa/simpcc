@@ -14,6 +14,7 @@ int main(int argc, char **argv)
     Nob_Cmd cmd = { 0 };
     const char *src_files[] = {
         "arena",
+        "ast_print",
         "simpcc",
         "diag",
         "lexer",

@@ -8,6 +8,7 @@
 
 #include "arena.h"
 #include "ast.h"
+#include "ast_print.h"
 #include "common.h"
 #include "diag.h"
 #include "lexer.h"
@@ -67,61 +68,6 @@ static const char *token_kind_to_str[] = {
     [TK_MINUS_GT] = "->",
     [TK_QUESTION] = "?",
 };
-
-static const char *type_to_str(Type ty)
-{
-    switch (ty.kind) {
-    case TYPE_VOID: return "void";
-    case TYPE_BOOL: return "bool";
-    case TYPE_CHAR:
-        if (ty.is_signed)
-            return "char";
-        else
-            return "unsigned char";
-    case TYPE_SHORT:
-        if (ty.is_signed)
-            return "short";
-        else
-            return "unsigned short";
-    case TYPE_INT:
-        if (ty.is_signed)
-            return "int";
-        else
-            return "unsigned int";
-    case TYPE_LONG:
-        if (ty.is_signed)
-            return "long";
-        else
-            return "unsigned long";
-    case TYPE_FLOAT: return "float";
-    case TYPE_DOUBLE: return "double";
-    case TYPE_LDOUBLE: return "long double";
-    case TYPE_PTR: {
-        // Count number of stars
-        int ptr_count = 0;
-        Type *base = &ty;
-        while (base->kind == TYPE_PTR) {
-            ptr_count++;
-            base = base->ptr.base;
-        }
-
-        // Base type string
-        const char *base_str = type_to_str(*base);
-
-        // Stars string
-        char stars[ptr_count + 1];
-        memset(stars, '*', ptr_count);
-        stars[ptr_count] = '\0';
-
-        // Full type string
-        static char buf[64];
-        sprintf(buf, "%s %s", base_str, stars);
-        return buf;
-    }
-    default:
-        UNREACHABLE("type_kind_to_str");
-    }
-}
 
 // Checks if the current token is of TokenKind `kind`, and returns `true` if so.
 static inline bool parser_check(Parser *p, TokenKind kind)
@@ -215,7 +161,8 @@ static bool is_castable_type(Type ty)
     }
 }
 
-// TODO: parse pointer types
+// TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_ARRAY, TYPE_VLA,
+// TYPE_STRUCT, TYPE_UNION, TYPE_NAMED
 static Type parse_type(Parser *p)
 {
     if (parser_at_eof(p))
@@ -624,7 +571,10 @@ static Expr *parse_expr_head(Parser *p)
             e->loc = t.loc;
             e->cast.type = parse_type(p);
             if (!is_castable_type(e->cast.type))
-                diag_fatal_at(e->cast.type.loc, "could not cast to type `%s`, only arithmetic and pointer types are castable", type_to_str(e->cast.type));
+                diag_fatal_at(e->cast.type.loc,
+                              "could not cast to type `%s`, only arithmetic "
+                              "and pointer types are castable",
+                              type_to_str(e->cast.type));
             if (!parser_expect(p, TK_CPAREN))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             e->cast.expr = parse_expr_bp(p, get_prefix_op_bp());
@@ -1112,6 +1062,6 @@ Parser parser_init_from_file_path(Arena *a, const char *file_path)
 void parse_transl_unit(Parser *p)
 {
     Expr *e = parse_expr(p);
-    print_expr_as_sexp(e, 0);
+    print_expr(stdout, e, 0);
     printf("\n");
 }
