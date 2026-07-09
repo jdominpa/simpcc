@@ -146,6 +146,15 @@ static void print_expr_field(FILE *out, const char *label, const Expr *e, uint32
     print_expr(out, e, depth);
 }
 
+static void print_stmt_field(FILE *out, const char *label, const Stmt *s, uint32_t depth)
+{
+    fprintf(out, "\n");
+    fprintf(out, "%*s", depth * INDENT_WIDTH, "");
+    if (label != NULL)
+        fprintf(out, "%s: ", label);
+    print_stmt(out, s, depth);
+}
+
 // TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_VLA, TYPE_STRUCT,
 // TYPE_UNION, TYPE_NAMED
 void print_type(FILE *out, const Type ty, uint32_t depth)
@@ -301,5 +310,40 @@ void print_expr(FILE *out, const Expr *e, uint32_t depth)
         break;
     default:
         UNREACHABLE("print_expr_as_sexp");
+    }
+}
+
+void print_stmt(FILE *out, const Stmt *s, uint32_t depth)
+{
+    if (s == NULL) {
+        fprintf(out, "(stmt null)");
+        return;
+    }
+
+    switch (s->kind) {
+    case STMT_BREAK:
+        fprintf(out, "(break_stmt ");
+        print_loc(out, s->loc);
+        fprintf(out, ")");
+        break;
+    case STMT_CONT:
+        fprintf(out, "(continue_stmt ");
+        print_loc(out, s->loc);
+        fprintf(out, ")");
+        break;
+    case STMT_RET:
+        fprintf(out, "(return_stmt ");
+        print_loc(out, s->loc);
+        if (s->_return != NULL)
+            print_expr_field(out, "expr", s->_return, depth + 1);
+        fprintf(out, ")");
+        break;
+    case STMT_GOTO:
+        fprintf(out, "(goto_stmt ");
+        print_loc(out, s->loc);
+        fprintf(out, " %s)", s->goto_label);
+        break;
+    default:
+        UNREACHABLE("print_stmt");
     }
 }

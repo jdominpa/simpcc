@@ -213,7 +213,7 @@ struct Stmt {
             const char *name;
             Stmt *next;
         } label;
-        Stmt *goto_label;
+        const char *goto_label;
         struct {
             Type type;
             Expr var;
@@ -243,7 +243,7 @@ struct Stmt {
             Stmt *body;
         } _case;
         Stmt *default_body;
-        Expr _return;
+        Expr *_return;
     };
 };
 

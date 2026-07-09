@@ -494,6 +494,7 @@ static Expr **parse_fn_call_args(Parser *p, size_t *argc)
     return args;
 }
 
+// TODO: parse compound literals
 /*
   Parses the head of an expression and returns it. The head of an expression is
   constructed as follows:
@@ -751,291 +752,52 @@ static inline Expr *parse_expr(Parser *p)
     return parse_expr_bp(p, 1);
 }
 
-static void print_expr_as_sexp(Expr *e, uint32_t indent)
+//
+// Statement parser
+//
+
+Stmt *parse_stmt(Parser *p)
 {
-    switch (e->kind) {
-    case EXPR_CHAR:
-        printf("%c", e->c);
-        break;
-    case EXPR_STR:
-        printf("%s", e->str);
-        break;
-    case EXPR_NUM:
-        printf("%d", e->val);
-        break;
-    case EXPR_IDENT:
-        printf("%s", e->ident);
-        break;
-    case EXPR_UNOP:
-        switch (e->unop.kind) {
-        case UNOP_POS:
-            printf("+");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_NEG:
-            printf("-");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_NOT:
-            printf("!");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_BIT_NOT:
-            printf("~");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_DEREF:
-            printf("*");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_ADDR:
-            printf("&");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_PRE_INC:
-            printf("++");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_PRE_DEC:
-            printf("--");
-            print_expr_as_sexp(e->unop.operand, indent);
-            break;
-        case UNOP_POST_INC:
-            print_expr_as_sexp(e->unop.operand, indent);
-            printf("++");
-            break;
-        case UNOP_POST_DEC:
-            print_expr_as_sexp(e->unop.operand, indent);
-            printf("--");
-            break;
-        default:
-            UNREACHABLE("e->unop.kind at print_expr_as_sexp");
+    Stmt *s = arena_alloc(p->a, Stmt);
+
+    Token t = p->tokens[p->pos];
+    parser_bump(p);
+    switch (t.kind) {
+    case TK_KW:
+        if (token_equal(t, "break")) {
+            s->kind = STMT_BREAK;
+            s->loc = t.loc;
+        } else if (token_equal(t, "continue")) {
+            s->kind = STMT_CONT;
+            s->loc = t.loc;
+        } else if (token_equal(t, "return")) {
+            s->kind = STMT_RET;
+            s->loc = t.loc;
+            s->_return = parse_expr(p);
+        } else if (token_equal(t, "goto")) {
+            s->kind = STMT_GOTO;
+            s->loc = t.loc;
+            t = p->tokens[p->pos];
+            if (!parser_expect(p, TK_IDENT))
+                // TODO: handle error instead of crashing
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            s->goto_label = arena_strndup(p->a, t.start, t.len);
+        } else {
+            TODO("implemenet the rest of statements that begin with keywords");
         }
-        break;
-    case EXPR_BINOP:
-        switch (e->binop.kind) {
-        case BINOP_OR:
-            printf("(or ");
-            indent += 4;
-            break;
-        case BINOP_AND:
-            printf("(and ");
-            indent += 5;
-            break;
-        case BINOP_BIT_OR:
-            printf("(| ");
-            indent += 3;
-            break;
-        case BINOP_BIT_XOR:
-            printf("(^ ");
-            indent += 3;
-            break;
-        case BINOP_BIT_AND:
-            printf("(& ");
-            indent += 3;
-            break;
-        case BINOP_EQ:
-            printf("(== ");
-            indent += 4;
-            break;
-        case BINOP_NOT_EQ:
-            printf("(!= ");
-            indent += 4;
-            break;
-        case BINOP_LT:
-            printf("(< ");
-            indent += 3;
-            break;
-        case BINOP_LT_EQ:
-            printf("(<= ");
-            indent += 4;
-            break;
-        case BINOP_GT:
-            printf("(> ");
-            indent += 3;
-            break;
-        case BINOP_GT_EQ:
-            printf("(>= ");
-            indent += 4;
-            break;
-        case BINOP_LSFT:
-            printf("(<< ");
-            indent += 4;
-            break;
-        case BINOP_RSFT:
-            printf("(>> ");
-            indent += 4;
-            break;
-        case BINOP_PLUS:
-            printf("(+ ");
-            indent += 3;
-            break;
-        case BINOP_MINUS:
-            printf("(- ");
-            indent += 3;
-            break;
-        case BINOP_MULT:
-            printf("(* ");
-            indent += 3;
-            break;
-        case BINOP_DIV:
-            printf("(/ ");
-            indent += 3;
-            break;
-        case BINOP_MOD:
-            printf("(%% ");
-            indent += 3;
-            break;
-        default:
-            UNREACHABLE("e->binop.kind at print_expr_as_sexp");
-        }
-        print_expr_as_sexp(e->binop.lhs, indent);
-        printf("\n%*s", indent, "");
-        print_expr_as_sexp(e->binop.rhs, indent);
-        printf(")");
-        break;
-    case EXPR_TERNOP:
-        printf("(if ");
-        indent += 4;
-        print_expr_as_sexp(e->ternop.cond, indent);
-        printf("\n%*s", indent, "");
-        print_expr_as_sexp(e->ternop.then, indent);
-        printf("\n%*s", indent - 1, "");
-        print_expr_as_sexp(e->ternop._else, indent);
-        printf(")");
-        break;
-    case EXPR_FN_CALL:
-        printf("(%s", e->fn_call.fn_name);
-        if (e->fn_call.argc > 0) {
-            printf(" ");
-            indent += 2 + strlen(e->fn_call.fn_name);
-            print_expr_as_sexp(e->fn_call.args[0], indent);
-            for (size_t i = 1; i < e->fn_call.argc; ++i) {
-                printf("\n%*s", indent, "");
-                print_expr_as_sexp(e->fn_call.args[i], indent);
-            }
-        }
-        printf(")");
-        break;
-    case EXPR_ASSIGN:
-        printf("(let ");
-        indent += 5;
-        print_expr_as_sexp(e->assign.var, indent);
-        printf("\n%*s", indent, "");
-        switch (e->assign.kind) {
-        case ASSIGN_AND:
-            printf("(& ");
-            indent += 3;
-            print_expr_as_sexp(e->assign.var, indent);
-            printf("\n%*s", indent, "");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_XOR:
-            printf("(^ ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_OR:
-            printf("(| ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_LSFT:
-            printf("(<< ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_RSFT:
-            printf("(>> ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_MULT:
-            printf("(* ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_DIV:
-            printf("(/ ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_MOD:
-            printf("(%% ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_PLUS:
-            printf("(+ ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_MINUS:
-            printf("(- ");
-            print_expr_as_sexp(e->assign.var, indent);
-            printf(" ");
-            print_expr_as_sexp(e->assign.value, indent);
-            printf(")");
-            break;
-        case ASSIGN_EQ:
-            print_expr_as_sexp(e->assign.value, indent);
-            break;
-        default:
-            UNREACHABLE("e->assign.kind at print_expr_as_sexp");
-        }
-        printf(")");
-        break;
-    case EXPR_INDEX:
-        print_expr_as_sexp(e->index.array, indent);
-        printf("\[");
-        print_expr_as_sexp(e->index.index, indent);
-        printf("]");
-        break;
-    case EXPR_FIELD:
-        print_expr_as_sexp(e->field._struct, indent);
-        printf(".%s", e->field.field);
-        break;
-    case EXPR_ARROW:
-        print_expr_as_sexp(e->field._struct, indent);
-        printf("->%s", e->field.field);
-        break;
-    case EXPR_CAST:
-        indent += strlen(type_to_str(e->cast.type)) + 1;
-        printf("(%s) ", type_to_str(e->cast.type));
-        print_expr_as_sexp(e->cast.expr, indent);
-        break;
-    case EXPR_SIZEOF_TY:
-        printf("sizeof(%s)", type_to_str(e->sizeof_ty));
-        break;
-    case EXPR_SIZEOF_EX:
-        printf("sizeof ");
-        indent += 7;
-        print_expr_as_sexp(e->sizeof_expr, indent);
-        break;
-    case EXPR_ALIGNOF:
-        printf("alignof(%s)", type_to_str(e->alignof_ty));
-        break;
+        if (!parser_expect(p, TK_SEMI))
+            // TODO: handle error instead of crashing
+            UNREACHABLE("parser_expect is currently nonreturnable");
+        return s;
     default:
-        UNREACHABLE("print_expr_as_sexp");
+        // TODO: use `diag_report_at` and try to recover from the error
+        diag_fatal_at(t.loc, "invalid statement encountered");
     }
 }
+
+//
+// Translation unit parser
+//
 
 Parser parser_init_from_file_path(Arena *a, const char *file_path)
 {
@@ -1061,7 +823,9 @@ Parser parser_init_from_file_path(Arena *a, const char *file_path)
 
 void parse_transl_unit(Parser *p)
 {
-    Expr *e = parse_expr(p);
-    print_expr(stdout, e, 0);
+    /* Expr *e = parse_expr(p); */
+    /* print_expr(stdout, e, 0); */
+    Stmt *s = parse_stmt(p);
+    print_stmt(stdout, s, 0);
     printf("\n");
 }
