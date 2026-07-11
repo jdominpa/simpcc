@@ -14,7 +14,7 @@ static Chunk *arena_new_chunk(Arena *a, size_t size)
 {
     Chunk *c = (Chunk *) malloc(sizeof(Chunk));
     if (c == NULL) {
-        fprintf(stderr, "arena: error: unable to allocate new chunk\n");
+        fprintf(stderr, "arena: error: could not allocate new chunk\n");
         abort();
     }
 
@@ -23,7 +23,7 @@ static Chunk *arena_new_chunk(Arena *a, size_t size)
         chunk_size = size;
     c->start = malloc(chunk_size);
     if (c->start == NULL) {
-        fprintf(stderr, "arena: error: unable to allocate memory for new chunk\n");
+        fprintf(stderr, "arena: error: could not allocate memory for new chunk\n");
         abort();
     }
     c->prev = NULL;
