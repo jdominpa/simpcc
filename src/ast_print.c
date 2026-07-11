@@ -321,6 +321,26 @@ void print_stmt(FILE *out, const Stmt *s, uint32_t depth)
     }
 
     switch (s->kind) {
+    case STMT_BLOCK:
+        fprintf(out, "(block_stmt ");
+        print_loc(out, s->loc);
+        for (size_t i = 0; i < s->block.count; ++i) {
+            char stmt_label[50];
+            sprintf(stmt_label, "statement %zu", i);
+            print_stmt_field(out, stmt_label, s->block.stmts[i], depth + 1);
+        }
+        fprintf(out, ")");
+        break;
+    case STMT_IF:
+        fprintf(out, "(if_stmt ");
+        print_loc(out, s->loc);
+        print_expr_field(out, "condition", s->_if.cond, depth + 1);
+        print_stmt_field(out, "then", s->_if.then, depth + 1);
+        if (s->_if._else != NULL)
+            print_stmt_field(out, "else", s->_if._else, depth + 1);
+        fprintf(out, ")");
+        break;
+    // Jump statements
     case STMT_BREAK:
         fprintf(out, "(break_stmt ");
         print_loc(out, s->loc);
@@ -331,17 +351,17 @@ void print_stmt(FILE *out, const Stmt *s, uint32_t depth)
         print_loc(out, s->loc);
         fprintf(out, ")");
         break;
+    case STMT_GOTO:
+        fprintf(out, "(goto_stmt ");
+        print_loc(out, s->loc);
+        fprintf(out, " %s)", s->goto_label);
+        break;
     case STMT_RET:
         fprintf(out, "(return_stmt ");
         print_loc(out, s->loc);
         if (s->_return != NULL)
             print_expr_field(out, "expr", s->_return, depth + 1);
         fprintf(out, ")");
-        break;
-    case STMT_GOTO:
-        fprintf(out, "(goto_stmt ");
-        print_loc(out, s->loc);
-        fprintf(out, " %s)", s->goto_label);
         break;
     default:
         UNREACHABLE("print_stmt");

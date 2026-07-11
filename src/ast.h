@@ -184,7 +184,6 @@ typedef enum {
     STMT_EXPR,     // expr-stmt
     STMT_BLOCK,    // "{" compound-stmt "}"
     STMT_LABEL,    // ident ":" stmt
-    STMT_GOTO,     // "goto" (ident | "*" expr) ";"
     STMT_DECL,     // int x = expr;
     STMT_WHILE,    // "while" "(" expr ")" stmt
     STMT_FOR,      // "for" "(" expr-stmt expr? ";" expr? ")" stmt
@@ -195,6 +194,7 @@ typedef enum {
     STMT_DEFAULT,  // "default" ":" stmt
     STMT_BREAK,    // "break" ";"
     STMT_CONT,     // "continue" ";"
+    STMT_GOTO,     // "goto" (ident | "*" expr) ";"
     STMT_RET,      // "return" expr? ";"
     STMT_COUNT,
 } StmtKind;
@@ -230,7 +230,7 @@ struct Stmt {
             Stmt *body;
         } _for;
         struct {
-            Expr cond;
+            Expr *cond;
             Stmt *then;
             Stmt *_else;
         } _if;

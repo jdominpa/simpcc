@@ -756,39 +756,90 @@ static inline Expr *parse_expr(Parser *p)
 // Statement parser
 //
 
-Stmt *parse_stmt(Parser *p)
+static Stmt *parse_stmt(Parser *p);
+
+static Stmt *parse_block_stmts(Parser *p)
 {
     Stmt *s = arena_alloc(p->a, Stmt);
+    s->kind = STMT_BLOCK;
+    s->loc = p->tokens[p->pos - 1].loc;
 
+    struct {
+        Stmt **items;
+        size_t count;
+        size_t capacity;
+    } stmts = { 0 };
+
+    // Parse statements
+    while (!parser_at_eof(p) && !parser_check(p, TK_CBRACE))
+        da_append(&stmts, parse_stmt(p),
+                  "could not allocate temporary memory to parse block statement");
+    if (!parser_eat(p, TK_CBRACE)) {
+        free(stmts.items);
+        // TODO: handle error instead of crashing
+        diag_fatal_at(s->loc, "unclosed block statement");
+    }
+
+    s->block.stmts = arena_alloc_many(p->a, Stmt *, stmts.count);
+    memcpy(s->block.stmts, stmts.items, stmts.count * sizeof(Stmt *));
+    s->block.count = stmts.count;
+    free(stmts.items);
+    return s;
+}
+
+static Stmt *parse_stmt(Parser *p)
+{
     Token t = p->tokens[p->pos];
     parser_bump(p);
     switch (t.kind) {
-    case TK_KW:
+    case TK_KW: {
+        Stmt *s = arena_alloc(p->a, Stmt);
         if (token_equal(t, "break")) {
             s->kind = STMT_BREAK;
             s->loc = t.loc;
+            if (!parser_expect(p, TK_SEMI))
+                UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "continue")) {
             s->kind = STMT_CONT;
             s->loc = t.loc;
+            if (!parser_expect(p, TK_SEMI))
+                UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "return")) {
             s->kind = STMT_RET;
             s->loc = t.loc;
-            s->_return = parse_expr(p);
+            s->_return = parser_check(p, TK_SEMI) ? NULL : parse_expr(p);
+            if (!parser_expect(p, TK_SEMI))
+                UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "goto")) {
             s->kind = STMT_GOTO;
             s->loc = t.loc;
             t = p->tokens[p->pos];
             if (!parser_expect(p, TK_IDENT))
-                // TODO: handle error instead of crashing
                 UNREACHABLE("parser_expect is currently nonreturnable");
             s->goto_label = arena_strndup(p->a, t.start, t.len);
+            if (!parser_expect(p, TK_SEMI))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+        } else if (token_equal(t, "if")) {
+            s->kind = STMT_IF;
+            s->loc = t.loc;
+            if (!parser_expect(p, TK_OPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            s->_if.cond = parse_expr(p);
+            if (!parser_expect(p, TK_CPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
+            s->_if.then = parse_stmt(p);
+            s->_if._else = NULL;
+            if (token_equal(p->tokens[p->pos], "else")) {
+                parser_bump(p);
+                s->_if._else = parse_stmt(p);
+            }
         } else {
             TODO("implemenet the rest of statements that begin with keywords");
         }
-        if (!parser_expect(p, TK_SEMI))
-            // TODO: handle error instead of crashing
-            UNREACHABLE("parser_expect is currently nonreturnable");
         return s;
+    }
+    case TK_OBRACE:
+        return parse_block_stmts(p);
     default:
         // TODO: use `diag_report_at` and try to recover from the error
         diag_fatal_at(t.loc, "invalid statement encountered");

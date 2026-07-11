@@ -3,26 +3,12 @@
 #include <string.h>
 
 #include "arena.h"
-#include "ast.h"
+#include "common.h"
 #include "lexer.h"
 #include "parser.h"
 
-#define DA_INIT_CAPACITY 256
-#define da_append(da, item)                                                                       \
-    do {                                                                                          \
-        if ((da)->count + 1 >= (da)->capacity) {                                                  \
-            (da)->capacity = (da)->capacity == 0 ? DA_INIT_CAPACITY : (da)->capacity * 2;         \
-            (da)->items = realloc((da)->items, (da)->capacity * sizeof(*(da)->items));            \
-            if ((da)->items == NULL) {                                                            \
-                fprintf(stderr, "simpcc: error: could not allocate memory for dynamic array\n");  \
-                abort();                                                                          \
-            }                                                                                     \
-        }                                                                                         \
-        (da)->items[(da)->count++] = (item);                                                      \
-    } while (0)
-
 typedef struct {
-    char **items;
+    const char **items;
     size_t count;
     size_t capacity;
 } StringArray;
@@ -57,8 +43,7 @@ static void usage(int exit_status)
     fprintf(stderr, "Usage: simpcc [options] <file>\n");
     fprintf(stderr, "Options:\n");
     fprintf(stderr, "  --help    Display this information.\n");
-    fprintf(stderr, "  -E        Preprocesses and lex only; do not compile, "
-                    "assemble or link.\n");
+    fprintf(stderr, "  -E        Preprocesses and lex only; do not compile, assemble or link.\n");
     exit(exit_status);
 }
 
@@ -83,7 +68,8 @@ int main(int argc, char **argv)
                     prog_name, arg);
             usage(1);
         } else {
-            da_append(&input_files, arg);
+            da_append(&input_files, arg,
+                      "could not allocate temporary memory to parse input files");
             continue;
         }
     }
