@@ -463,35 +463,46 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
 // the function call. After returning, the parser will be at the closing paren.
 static Expr **parse_fn_call_args(Parser *p, size_t *argc)
 {
-    size_t capacity = 4;
-    Expr **tmp = malloc(capacity * sizeof(Expr *));
-    if (tmp == NULL)
-        diag_fatal("could not allocate temporary memory to parse function arguments");
+    // Location of the '(' already consumed by the caller, used for diagnostics
+    Loc open_loc = p->tokens[p->pos - 1].loc;
 
-    *argc = 0;
+    struct {
+        Expr **items;
+        size_t count;
+        size_t capacity;
+    } args = { 0 };
+
     uint8_t min_arg_bp = get_op_bp(TK_COMMA).right;
     while (!parser_at_eof(p) && !parser_check(p, TK_CPAREN)) {
-        if (*argc >= capacity) {
-            capacity *= 2;
-            tmp = realloc(tmp, capacity * sizeof(Expr *));
-            if (tmp == NULL)
-                diag_fatal("could not allocate temporary memory to parse function arguments");
-        }
-        tmp[(*argc)++] = parse_expr_bp(p, min_arg_bp);
+        da_append(&args, parse_expr_bp(p, min_arg_bp),
+                  "could not allocate temporary memory to parse function call arguments");
         if (!parser_eat(p, TK_COMMA))
             break;
         if (parser_check(p, TK_CPAREN))
             diag_fatal_at(p->tokens[p->pos].loc, "trailing comma in function call argument list");
     }
+    if (!parser_eat(p, TK_CPAREN)) {
+        free(args.items);
+        // TODO: handle error instead of crashing
+        if (parser_at_eof(p))
+            diag_fatal_at(open_loc, "unclosed function call argument list");
+        else
+            diag_fatal_at(p->tokens[p->pos].loc,
+                          "unexpected token `%s` found in function call argument list, expected `%s` or `%s`",
+                          token_kind_to_str[p->tokens[p->pos].kind],
+                          token_kind_to_str[TK_COMMA],
+                          token_kind_to_str[TK_CPAREN]);
+    }
 
-    if (*argc == 0) {
-        free(tmp);
+    *argc = args.count;
+    if (args.count == 0) {
+        free(args.items);
         return NULL;
     }
-    Expr **args = arena_alloc_many(p->a, Expr *, *argc);
-    memcpy(args, tmp, *argc * sizeof(Expr *));
-    free(tmp);
-    return args;
+    Expr **args_ptr = arena_alloc_many(p->a, Expr *, args.count);
+    memcpy(args_ptr, args.items, args.count * sizeof(Expr *));
+    free(args.items);
+    return args_ptr;
 }
 
 // TODO: parse compound literals
@@ -694,12 +705,9 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
         if (parser_eat(p, TK_OPAREN)) {
             if (e->kind != EXPR_IDENT)
                 diag_fatal_at(e->loc, "invalid identifier used as function name");
-            const char *fn_name = e->ident;
             e->kind = EXPR_FN_CALL;
-            e->fn_call.fn_name = fn_name;
+            e->fn_call.fn_name = e->ident;
             e->fn_call.args = parse_fn_call_args(p, &e->fn_call.argc);
-            if (!parser_expect(p, TK_CPAREN))
-                UNREACHABLE("parser_expect is currently nonreturnable");
             continue;
         }
 
