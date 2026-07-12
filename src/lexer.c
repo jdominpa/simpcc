@@ -9,12 +9,12 @@
 
 // Accepts a file path and the source code of the file. Returns an initialized
 // lexer.
-Lexer lexer_init_from_source(const char *file_path, const char *source)
+Lexer lexer_init_from_src(const char *src)
 {
     return (Lexer) {
-        .file_path = file_path,
-        .source = source,
-        .size = strlen(source),
+        .file_path = NULL,
+        .src = src,
+        .size = strlen(src),
     };
 }
 
@@ -29,17 +29,19 @@ Lexer lexer_init_from_file_path(Arena *a, const char *file_path)
     fseek(f, 0, SEEK_END);
     size_t size = ftell(f);
     fseek(f, 0, SEEK_SET);
-    char *source = arena_alloc_many(a, char, size + 1);
-    if (source == NULL)
+    char *src = arena_alloc_many(a, char, size + 1);
+    if (src == NULL)
         diag_fatal("could not allocate memory to read file '%s'", file_path);
-    size_t size_read = fread(source, 1, size, f);
+    size_t size_read = fread(src, 1, size, f);
     if (size_read != size)
         diag_fatal("expected %zu bytes from file '%s' but got %zu", size,
                    file_path, size_read);
     fclose(f);
-    source[size] = '\0';
+    src[size] = '\0';
 
-    return lexer_init_from_source(file_path, source);
+    Lexer l = lexer_init_from_src(src);
+    l.file_path = file_path;
+    return l;
 }
 
 static Loc lexer_get_loc(Lexer *l)
@@ -55,7 +57,7 @@ static bool lexer_bump(Lexer *l)
 {
     if (l->pos >= l->size)
         return false;
-    if (l->source[l->pos++] == '\n') {
+    if (l->src[l->pos++] == '\n') {
         l->bol = l->pos;
         l->line++;
     }
@@ -72,12 +74,12 @@ static bool lexer_bump_bytes(Lexer *l, size_t n)
 
 static inline char lexer_peek_first(Lexer *l)
 {
-    return l->pos + 1 < l->size ? l->source[l->pos + 1] : '\0';
+    return l->pos + 1 < l->size ? l->src[l->pos + 1] : '\0';
 }
 
 static inline char lexer_peek_second(Lexer *l)
 {
-    return l->pos + 2 < l->size ? l->source[l->pos + 2] : '\0';
+    return l->pos + 2 < l->size ? l->src[l->pos + 2] : '\0';
 }
 
 static bool lexer_starts_with(Lexer *l, const char *prefix)
@@ -85,7 +87,7 @@ static bool lexer_starts_with(Lexer *l, const char *prefix)
     size_t len = strlen(prefix);
     if (l->pos + len <= l->size) {
         for (size_t i = 0; i < len; ++i)
-            if (l->source[l->pos + i] != prefix[i])
+            if (l->src[l->pos + i] != prefix[i])
                 return false;
         return true;
     }
@@ -128,14 +130,14 @@ Token lexer_next_token(Lexer *l)
 
     // Skip whitespace and comments
     for (;;) {
-        while (l->pos < l->size && isspace(l->source[l->pos]))
+        while (l->pos < l->size && isspace(l->src[l->pos]))
             lexer_bump(l);
-        if (l->pos < l->size && l->source[l->pos] == '/') {
+        if (l->pos < l->size && l->src[l->pos] == '/') {
             switch (lexer_peek_first(l)) {
             case '/':
                 lexer_bump_bytes(l, 2);
-                while (l->pos < l->size && l->source[l->pos] != '\r' &&
-                       l->source[l->pos] != '\n')
+                while (l->pos < l->size && l->src[l->pos] != '\r' &&
+                       l->src[l->pos] != '\n')
                     lexer_bump(l);
                 continue;
             case '*': {
@@ -160,16 +162,16 @@ Token lexer_next_token(Lexer *l)
     // EOF
     if (l->pos >= l->size) {
         t.kind = TK_EOF;
-        t.start = l->source + l->size;
+        t.start = l->src + l->size;
         return t;
     }
 
-    t.start = l->source + l->pos;
+    t.start = l->src + l->pos;
 
     // Identifier/Keyword
-    if (is_ident_start(l->source[l->pos])) {
+    if (is_ident_start(l->src[l->pos])) {
         t.kind = TK_IDENT;
-        while (l->pos < l->size && is_ident_cont(l->source[l->pos])) {
+        while (l->pos < l->size && is_ident_cont(l->src[l->pos])) {
             t.len++;
             lexer_bump(l);
         }
@@ -181,46 +183,46 @@ Token lexer_next_token(Lexer *l)
     // TODO: the code to lex string and character tokens is almost the same. It
     // should be combined
     // Character
-    if (l->source[l->pos] == '\'') {
+    if (l->src[l->pos] == '\'') {
         t.kind = TK_CHAR;
         lexer_bump(l);
-        while (l->pos < l->size && l->source[l->pos] != '\'') {
-            if (l->source[l->pos] == '\n' || l->source[l->pos] == '\0')
+        while (l->pos < l->size && l->src[l->pos] != '\'') {
+            if (l->src[l->pos] == '\n' || l->src[l->pos] == '\0')
                 diag_fatal_at(t.loc, "unclosed character literal");
-            if (l->source[l->pos] == '\\')
+            if (l->src[l->pos] == '\\')
                 lexer_bump(l);
             lexer_bump(l);
         }
         if (l->pos >= l->size)
             diag_fatal_at(t.loc, "unclosed character literal");
         lexer_bump(l);
-        t.len = l->pos - (t.start - l->source);
+        t.len = l->pos - (t.start - l->src);
         return t;
     }
 
     // String
-    if (l->source[l->pos] == '"') {
+    if (l->src[l->pos] == '"') {
         t.kind = TK_STR;
         lexer_bump(l);
-        while (l->pos < l->size && l->source[l->pos] != '"') {
-            if (l->source[l->pos] == '\n' || l->source[l->pos] == '\0')
+        while (l->pos < l->size && l->src[l->pos] != '"') {
+            if (l->src[l->pos] == '\n' || l->src[l->pos] == '\0')
                 diag_fatal_at(t.loc, "unclosed string literal");
-            if (l->source[l->pos] == '\\')
+            if (l->src[l->pos] == '\\')
                 lexer_bump(l);
             lexer_bump(l);
         }
         if (l->pos >= l->size)
             diag_fatal_at(t.loc, "unclosed string literal");
         lexer_bump(l);
-        t.len = l->pos - (t.start - l->source);
+        t.len = l->pos - (t.start - l->src);
         return t;
     }
 
     // Number
-    if (isdigit(l->source[l->pos])) {
+    if (isdigit(l->src[l->pos])) {
         t.kind = TK_NUM;
         // TODO: handle non-integer numbers
-        while (l->pos < l->size && isdigit(l->source[l->pos])) {
+        while (l->pos < l->size && isdigit(l->src[l->pos])) {
             t.len++;
             lexer_bump(l);
         }
@@ -235,7 +237,7 @@ Token lexer_next_token(Lexer *l)
         return t;                      \
     } while (0)
 
-    char c = l->source[l->pos];
+    char c = l->src[l->pos];
     char first = lexer_peek_first(l);
     char second = lexer_peek_second(l);
 

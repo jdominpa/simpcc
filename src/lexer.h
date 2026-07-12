@@ -92,14 +92,14 @@ typedef struct {
 
 typedef struct {
     const char *file_path;
-    const char *source;
+    const char *src;
     size_t size;                // size of source
     size_t pos;                 // position
     size_t bol;                 // beginning of current line (zero indexed)
     size_t line;                // current line number (zero indexed)
 } Lexer;
 
-Lexer lexer_init_from_source(const char *file_path, const char *source);
+Lexer lexer_init_from_src(const char *source);
 Lexer lexer_init_from_file_path(Arena *a, const char *file_path);
 Token lexer_next_token(Lexer *l);
 
