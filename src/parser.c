@@ -808,8 +808,12 @@ static Stmt *parse_block_stmts(Parser *p)
         diag_fatal_at(s->loc, "unclosed block statement");
     }
 
-    s->block.stmts = arena_alloc_many(p->a, Stmt *, stmts.count);
-    memcpy(s->block.stmts, stmts.items, stmts.count * sizeof(Stmt *));
+    if (stmts.count > 0) {
+        s->block.stmts = arena_alloc_many(p->a, Stmt *, stmts.count);
+        memcpy(s->block.stmts, stmts.items, stmts.count * sizeof(Stmt *));
+    } else {
+        s->block.stmts = NULL;
+    }
     s->block.count = stmts.count;
     free(stmts.items);
     return s;
