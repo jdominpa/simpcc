@@ -91,11 +91,25 @@ static const char *token_to_str(Token t)
     }
 }
 
+// Returns the current token without consuming it.
+static inline Token parser_peek(Parser *p)
+{
+    assert(p->pos < p->token_count);
+    return p->tokens[p->pos];
+}
+
+// Returns the most recently consumed token. Panics if called without having
+// consumed at least one token.
+static inline Token parser_prev(Parser *p)
+{
+    assert(p->pos > 0 && p->pos <= p->token_count);
+    return p->tokens[p->pos - 1];
+}
+
 // Checks if the current token is of TokenKind `kind`, and returns `true` if so.
 static inline bool parser_check(Parser *p, TokenKind kind)
 {
-    assert(p->pos < p->token_count);
-    return p->tokens[p->pos].kind == kind;
+    return parser_peek(p).kind == kind;
 }
 
 // Returns whether the parser is at EOF or not.
@@ -107,8 +121,7 @@ static inline bool parser_at_eof(Parser *p)
 // Advance the parser by one token.
 static inline void parser_bump(Parser *p)
 {
-    if (!parser_at_eof(p))
-        p->pos++;
+    if (!parser_at_eof(p)) p->pos++;
 }
 
 // Consume token of TokenKind `kind` if present.
@@ -130,7 +143,7 @@ static bool parser_expect(Parser *p, TokenKind kind)
         parser_bump(p);
         return true;
     } else {
-        Token t = p->tokens[p->pos];
+        Token t = parser_peek(p);
         // TODO: try to recover from unexpected tokens instead of crashing
         diag_fatal_at(t.loc, "unexpected token, expected %s but found %s",
                       token_to_str(t), token_to_str(t));
@@ -188,7 +201,7 @@ static bool is_castable_type(Type ty)
 static Type parse_type(Parser *p)
 {
     if (parser_at_eof(p))
-        diag_fatal_at(p->tokens[p->pos].loc, "unexpected end of file encountered while parsing type");
+        diag_fatal_at(parser_peek(p).loc, "unexpected end of file encountered while parsing type");
 
     Type ty = { 0 };
     enum {
@@ -207,7 +220,7 @@ static Type parse_type(Parser *p)
 
     // Built-in types
     uint32_t counter = 0;
-    Token t = p->tokens[p->pos];
+    Token t = parser_peek(p);
     ty.loc = t.loc;
     while (is_type(t)) {
         if (token_equal(t, "void"))
@@ -234,7 +247,7 @@ static Type parse_type(Parser *p)
             UNREACHABLE("parse_type");
 
         parser_bump(p);
-        t = p->tokens[p->pos];
+        t = parser_peek(p);
     }
 
     switch (counter) {
@@ -486,7 +499,7 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
 static Expr **parse_fn_call_args(Parser *p, size_t *argc)
 {
     // Location of the '(' already consumed by the caller, used for diagnostics
-    Loc open_loc = p->tokens[p->pos - 1].loc;
+    Loc open_loc = parser_prev(p).loc;
 
     struct {
         Expr **items;
@@ -501,7 +514,7 @@ static Expr **parse_fn_call_args(Parser *p, size_t *argc)
         if (!parser_eat(p, TK_COMMA))
             break;
         if (parser_check(p, TK_CPAREN))
-            diag_fatal_at(p->tokens[p->pos].loc, "trailing comma in function call argument list");
+            diag_fatal_at(parser_peek(p).loc, "trailing comma in function call argument list");
     }
     if (!parser_eat(p, TK_CPAREN)) {
         free(args.items);
@@ -509,9 +522,9 @@ static Expr **parse_fn_call_args(Parser *p, size_t *argc)
         if (parser_at_eof(p))
             diag_fatal_at(open_loc, "unclosed function call argument list");
         else
-            diag_fatal_at(p->tokens[p->pos].loc,
+            diag_fatal_at(parser_peek(p).loc,
                           "expected `,` or `)` in function call argument list, but found %s",
-                          token_to_str(p->tokens[p->pos]));
+                          token_to_str(parser_peek(p)));
     }
 
     *argc = args.count;
@@ -540,7 +553,7 @@ static Expr **parse_fn_call_args(Parser *p, size_t *argc)
 */
 static Expr *parse_expr_head(Parser *p)
 {
-    Token t = p->tokens[p->pos];
+    Token t = parser_peek(p);
     parser_bump(p);
     switch (t.kind) {
     case TK_IDENT: {
@@ -595,7 +608,7 @@ static Expr *parse_expr_head(Parser *p)
         return e;
     }
     case TK_OPAREN:
-        if (is_type(p->tokens[p->pos])) {
+        if (is_type(parser_peek(p))) {
             // Cast
             // "(" Type ")" expr
             Expr *e = arena_alloc(p->a, Expr);
@@ -690,7 +703,7 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
 {
     Expr *e = parse_expr_head(p);
     while (!parser_at_eof(p)) {
-        Token op = p->tokens[p->pos];
+        Token op = parser_peek(p);
 
         // Operation precedence check
         BindPower op_bp = get_op_bp(op.kind);
@@ -746,7 +759,7 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
 
         // Struct or struct pointer field access
         if (parser_eat(p, TK_DOT) || parser_eat(p, TK_MINUS_GT)) {
-            Token field = p->tokens[p->pos];
+            Token field = parser_peek(p);
             if (!parser_expect(p, TK_IDENT))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             Expr *obj = e;
@@ -790,7 +803,7 @@ static Stmt *parse_block_stmts(Parser *p)
 {
     Stmt *s = arena_alloc(p->a, Stmt);
     s->kind = STMT_BLOCK;
-    s->loc = p->tokens[p->pos - 1].loc;
+    s->loc = parser_prev(p).loc;
 
     struct {
         Stmt **items;
@@ -821,7 +834,7 @@ static Stmt *parse_block_stmts(Parser *p)
 
 static Stmt *parse_stmt(Parser *p)
 {
-    Token t = p->tokens[p->pos];
+    Token t = parser_peek(p);
     parser_bump(p);
     switch (t.kind) {
     case TK_KW: {
@@ -845,7 +858,7 @@ static Stmt *parse_stmt(Parser *p)
         } else if (token_equal(t, "goto")) {
             s->kind = STMT_GOTO;
             s->loc = t.loc;
-            t = p->tokens[p->pos];
+            t = parser_peek(p);
             if (!parser_expect(p, TK_IDENT))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             s->goto_label = arena_strndup(p->a, t.start, t.len);
@@ -861,7 +874,7 @@ static Stmt *parse_stmt(Parser *p)
                 UNREACHABLE("parser_expect is currently nonreturnable");
             s->_if.then = parse_stmt(p);
             s->_if._else = NULL;
-            if (token_equal(p->tokens[p->pos], "else")) {
+            if (token_equal(parser_peek(p), "else")) {
                 parser_bump(p);
                 s->_if._else = parse_stmt(p);
             }
