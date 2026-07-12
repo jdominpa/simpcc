@@ -895,13 +895,12 @@ static Stmt *parse_stmt(Parser *p)
 // Translation unit parser
 //
 
-Parser parser_init_from_file_path(Arena *a, const char *file_path)
+static Parser parser_init_from_lexer(Arena *a, Lexer l)
 {
     Parser p = { 0 };
     p.a = a;
 
     // Count amount of tokens
-    Lexer l = lexer_init_from_file_path(a, file_path);
     Token t = { 0 };
     do {
         t = lexer_next_token(&l);
@@ -915,6 +914,16 @@ Parser parser_init_from_file_path(Arena *a, const char *file_path)
         p.tokens[i] = lexer_next_token(&l);
 
     return p;
+}
+
+inline Parser parser_init_from_src(Arena *a, const char *src)
+{
+    return parser_init_from_lexer(a, lexer_init_from_src(src));
+}
+
+inline Parser parser_init_from_file_path(Arena *a, const char *file_path)
+{
+    return parser_init_from_lexer(a, lexer_init_from_file_path(a, file_path));
 }
 
 void parse_transl_unit(Parser *p)
