@@ -13,11 +13,11 @@
 #include "diag.h"
 #include "lexer.h"
 
-// TODO: maybe this should be moved somewhere else
+// Array of human-readable `TokenKind`.
 static const char *token_kind_to_str[] = {
     [TK_INVALID] = "invalid",
     [TK_EOF] = "EOF",
-    [TK_IDENT] = "ident",
+    [TK_IDENT] = "identifier",
     [TK_KW] = "keyword",
     [TK_CHAR] = "char",
     [TK_STR] = "str",
@@ -69,6 +69,28 @@ static const char *token_kind_to_str[] = {
     [TK_QUESTION] = "?",
 };
 
+// Returns a human-readable description of the Token `t`. Identifiers, keywords,
+// numbers, strings and characters include their own source text. Every other
+// token kind fallsback to the result of the array `token_kind_to_str`.
+static const char *token_to_str(Token t)
+{
+    static char buf[128];
+    switch (t.kind) {
+    case TK_IDENT:
+    case TK_KW:
+    case TK_NUM:
+    case TK_STR:
+    case TK_CHAR:
+        snprintf(buf, sizeof(buf), "%s `%.*s`",
+                 token_kind_to_str[t.kind], (int) t.len, t.start);
+        return buf;
+    default:
+        snprintf(buf, sizeof(buf), "`%s`",
+                 token_kind_to_str[t.kind]);
+        return buf;
+    }
+}
+
 // Checks if the current token is of TokenKind `kind`, and returns `true` if so.
 static inline bool parser_check(Parser *p, TokenKind kind)
 {
@@ -110,8 +132,8 @@ static bool parser_expect(Parser *p, TokenKind kind)
     } else {
         Token t = p->tokens[p->pos];
         // TODO: try to recover from unexpected tokens instead of crashing
-        diag_fatal_at(t.loc, "unexpected token, expected `%s` but found `%s`",
-                      token_kind_to_str[kind], token_kind_to_str[t.kind]);
+        diag_fatal_at(t.loc, "unexpected token, expected %s but found %s",
+                      token_to_str(t), token_to_str(t));
     }
 }
 
@@ -488,10 +510,8 @@ static Expr **parse_fn_call_args(Parser *p, size_t *argc)
             diag_fatal_at(open_loc, "unclosed function call argument list");
         else
             diag_fatal_at(p->tokens[p->pos].loc,
-                          "unexpected token `%s` found in function call argument list, expected `%s` or `%s`",
-                          token_kind_to_str[p->tokens[p->pos].kind],
-                          token_kind_to_str[TK_COMMA],
-                          token_kind_to_str[TK_CPAREN]);
+                          "expected `,` or `)` in function call argument list, but found %s",
+                          token_to_str(p->tokens[p->pos]));
     }
 
     *argc = args.count;
