@@ -7,43 +7,6 @@
 
 #include "diag.h"
 
-// Accepts a file path and the source code of the file. Returns an initialized
-// lexer.
-Lexer lexer_init_from_src(const char *src)
-{
-    return (Lexer) {
-        .file_path = NULL,
-        .src = src,
-        .size = strlen(src),
-    };
-}
-
-// Accepts an arena where the source code of a file will be stored and the file
-// path. Returns the initialized lexer.
-Lexer lexer_init_from_file_path(Arena *a, const char *file_path)
-{
-    /* Read file */
-    FILE *f = fopen(file_path, "rb");
-    if (f == NULL)
-        diag_fatal("could not open file '%s' for parsing", file_path);
-    fseek(f, 0, SEEK_END);
-    size_t size = ftell(f);
-    fseek(f, 0, SEEK_SET);
-    char *src = arena_alloc_many(a, char, size + 1);
-    if (src == NULL)
-        diag_fatal("could not allocate memory to read file '%s'", file_path);
-    size_t size_read = fread(src, 1, size, f);
-    if (size_read != size)
-        diag_fatal("expected %zu bytes from file '%s' but got %zu", size,
-                   file_path, size_read);
-    fclose(f);
-    src[size] = '\0';
-
-    Lexer l = lexer_init_from_src(src);
-    l.file_path = file_path;
-    return l;
-}
-
 static Loc lexer_get_loc(Lexer *l)
 {
     return (Loc) {
@@ -122,6 +85,28 @@ static bool is_keyword(const char *symbol)
         if (strncmp(symbol, keywords[i], strlen(keywords[i])) == 0)
             return true;
     return false;
+}
+
+// Returns a human-readable description of the Token `t`. Identifiers, keywords,
+// numbers, strings and characters include their own source text. Every other
+// token kind fallsback to the result of the array `token_kind_to_str`.
+const char *token_to_str(Token t)
+{
+    static char buf[128];
+    switch (t.kind) {
+    case TK_IDENT:
+    case TK_KW:
+    case TK_NUM:
+    case TK_STR:
+    case TK_CHAR:
+        snprintf(buf, sizeof(buf), "%s `%.*s`",
+                 token_kind_to_str[t.kind], (int) t.len, t.start);
+        return buf;
+    default:
+        snprintf(buf, sizeof(buf), "`%s`",
+                 token_kind_to_str[t.kind]);
+        return buf;
+    }
 }
 
 Token lexer_next_token(Lexer *l)
@@ -377,4 +362,41 @@ Token lexer_next_token(Lexer *l)
     t.len = 1;
     lexer_bump(l);
     return t;
+}
+
+// Accepts a file path and the source code of the file. Returns an initialized
+// lexer.
+Lexer lexer_init_from_src(const char *src)
+{
+    return (Lexer) {
+        .file_path = NULL,
+        .src = src,
+        .size = strlen(src),
+    };
+}
+
+// Accepts an arena where the source code of a file will be stored and the file
+// path. Returns the initialized lexer.
+Lexer lexer_init_from_file_path(Arena *a, const char *file_path)
+{
+    /* Read file */
+    FILE *f = fopen(file_path, "rb");
+    if (f == NULL)
+        diag_fatal("could not open file '%s' for parsing", file_path);
+    fseek(f, 0, SEEK_END);
+    size_t size = ftell(f);
+    fseek(f, 0, SEEK_SET);
+    char *src = arena_alloc_many(a, char, size + 1);
+    if (src == NULL)
+        diag_fatal("could not allocate memory to read file '%s'", file_path);
+    size_t size_read = fread(src, 1, size, f);
+    if (size_read != size)
+        diag_fatal("expected %zu bytes from file '%s' but got %zu", size,
+                   file_path, size_read);
+    fclose(f);
+    src[size] = '\0';
+
+    Lexer l = lexer_init_from_src(src);
+    l.file_path = file_path;
+    return l;
 }
