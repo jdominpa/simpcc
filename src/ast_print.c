@@ -204,19 +204,31 @@ static void print_type_ctx(PrintCtx *ctx, const Type ty)
         print_loc(ctx, ty.loc);
         fprintf(ctx->out, " %s)", type_to_str(ty));
         break;
+    case TYPE_ENUM:
+        TODO("print_type_ctx: implement `TYPE_ENUM`");
     case TYPE_PTR:
         fprintf(ctx->out, "(ptr_type");
         print_loc(ctx, ty.loc);
         print_type_field(ctx, "base", *ty.ptr.base);
         fprintf(ctx->out, ")");
         break;
+    case TYPE_FUNC:
+        TODO("print_type_ctx: implement `TYPE_FUNC`");
     case TYPE_ARRAY:
         fprintf(ctx->out, "(array_type[%zu]", ty.array.size);
         print_loc(ctx, ty.loc);
         print_type_field(ctx, "base", *ty.array.base);
         fprintf(ctx->out, ")");
         break;
-    default:
+    case TYPE_VLA:
+        TODO("print_type_ctx: implement `TYPE_VLA`");
+    case TYPE_STRUCT:
+        TODO("print_type_ctx: implement `TYPE_STRUCT`");
+    case TYPE_UNION:
+        TODO("print_type_ctx: implement `TYPE_UNION`");
+    case TYPE_NAMED:
+        TODO("print_type_ctx: implement `TYPE_NAMED`");
+    case TYPE_COUNT:
         UNREACHABLE("print_type_ctx");
     }
 }
@@ -267,6 +279,8 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
             fprintf(ctx->out, " %s)", e->ident.name);
         }
         break;
+    case EXPR_CLIT:
+        TODO("print_expr_ctx: implement `EXPR_CLIT`");
     case EXPR_UNOP:
         fprintf(ctx->out, "(unop");
         print_loc(ctx, e->loc);
@@ -355,7 +369,7 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
         print_type_field(ctx, "type", e->alignof_ty);
         fprintf(ctx->out, ")");
         break;
-    default:
+    case EXPR_COUNT:
         UNREACHABLE("print_expr_ctx");
     }
 }
@@ -373,6 +387,8 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         print_loc(ctx, s->loc);
         fprintf(ctx->out, ")");
         break;
+    case STMT_EXPR:
+        TODO("print_stmt_ctx: implement `STMT_EXPR`");
     case STMT_BLOCK:
         fprintf(ctx->out, "(block");
         print_loc(ctx, s->loc);
@@ -390,6 +406,8 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         print_stmt_field(ctx, "next_stmt", s->label.next);
         fprintf(ctx->out, ")");
         break;
+    case STMT_DECL:
+        TODO("print_stmt_ctx: implement `STMT_DECL`");
     case STMT_WHILE:
         fprintf(ctx->out, "(while");
         print_loc(ctx, s->loc);
@@ -397,6 +415,8 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         print_stmt_field(ctx, "body", s->_while.body);
         fprintf(ctx->out, ")");
         break;
+    case STMT_FOR:
+        TODO("print_stmt_ctx: implement `STMT_FOR`");
     case STMT_DO:
         fprintf(ctx->out, "(do/while");
         print_loc(ctx, s->loc);
@@ -413,6 +433,12 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
             print_stmt_field(ctx, "else", s->_if._else);
         fprintf(ctx->out, ")");
         break;
+    case STMT_SWITCH:
+        TODO("print_stmt_ctx: implement `STMT_SWITCH`");
+    case STMT_CASE:
+        TODO("print_stmt_ctx: implement `STMT_CASE`");
+    case STMT_DEFAULT:
+        TODO("print_stmt_ctx: implement `STMT_DEFAULT`");
     // Jump statements
     case STMT_BREAK:
         fprintf(ctx->out, "(break");
@@ -436,7 +462,7 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
             print_expr_field(ctx, "expr", s->_return);
         fprintf(ctx->out, ")");
         break;
-    default:
+    case STMT_COUNT:
         UNREACHABLE("print_stmt_ctx");
     }
 }
