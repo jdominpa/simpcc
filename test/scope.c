@@ -5,7 +5,7 @@
 
 static Type primitive_type(TypeKind kind)
 {
-    return (Type) { .kind = kind, .is_signed = true };
+    return (Type) { .kind = kind, .sign = SIGN_SIGNED };
 }
 
 static Symbol *new_symbol(SymbolKind kind, Namespace ns, const char *name,

@@ -168,36 +168,39 @@ Type parse_type(Parser *p)
         case BOOL + UNSIGNED:
             diag_fatal_at(ty.loc, "type `bool` is incompatible with type modifier `unsigned`");
         case CHAR:
+            ty.kind = TYPE_CHAR;
+            ty.sign = SIGN_UNSPECIFIED;
+            break;
         case CHAR + SIGNED:
             ty.kind = TYPE_CHAR;
-            ty.is_signed = true;
+            ty.sign = SIGN_SIGNED;
             break;
         case CHAR + UNSIGNED:
             ty.kind = TYPE_CHAR;
-            ty.is_signed = false;
+            ty.sign = SIGN_UNSIGNED;
             break;
         case SHORT:
         case SHORT + INT:
         case SHORT + SIGNED:
         case SHORT + INT + SIGNED:
             ty.kind = TYPE_SHORT;
-            ty.is_signed = true;
+            ty.sign = SIGN_SIGNED;
             break;
         case SHORT + UNSIGNED:
         case SHORT + INT + UNSIGNED:
             ty.kind = TYPE_SHORT;
-            ty.is_signed = false;
+            ty.sign = SIGN_UNSIGNED;
             break;
         case INT:
         case INT + SIGNED:
         case SIGNED:
             ty.kind = TYPE_INT;
-            ty.is_signed = true;
+            ty.sign = SIGN_SIGNED;
             break;
         case UNSIGNED:
         case UNSIGNED + INT:
             ty.kind = TYPE_INT;
-            ty.is_signed = false;
+            ty.sign = SIGN_UNSIGNED;
             break;
         case LONG:
         case LONG + INT:
@@ -208,14 +211,14 @@ Type parse_type(Parser *p)
         case LONG + LONG + SIGNED:
         case LONG + LONG + INT + SIGNED:
             ty.kind = TYPE_LONG;
-            ty.is_signed = true;
+            ty.sign = SIGN_SIGNED;
             break;
         case LONG + UNSIGNED:
         case LONG + INT + UNSIGNED:
         case LONG + LONG + UNSIGNED:
         case LONG + LONG + INT + UNSIGNED:
             ty.kind = TYPE_LONG;
-            ty.is_signed = false;
+            ty.sign = SIGN_UNSIGNED;
             break;
         case FLOAT:
             ty.kind = TYPE_FLOAT;
@@ -743,7 +746,7 @@ Stmt *parse_stmt(Parser *p)
     parser_bump(p);
     switch (t.kind) {
     case TK_EOF:
-        diag_fatal_at(t.loc, "unexpected %s found while parsing statement", token_kind_to_str[TK_EOF]);
+        diag_fatal_at(t.loc, "unexpected %s encountered while parsing statement", token_kind_to_str[TK_EOF]);
     case TK_IDENT:
         if (parser_eat(p, TK_COLON)) {
             Stmt *s = arena_alloc(p->a, Stmt);

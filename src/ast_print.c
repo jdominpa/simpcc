@@ -83,21 +83,14 @@ const char *type_to_str(Type ty)
         case SIGN_SIGNED:      return "signed_char";
         case SIGN_UNSIGNED:    return "unsigned_char";
         }
+        UNREACHABLE("type_to_str");
+        break;
     case TYPE_SHORT:
-        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
-            return "short";
-        else
-            return "unsigned_short";
+        return ty.sign == SIGN_UNSIGNED ? "unsigned_short" : "short";
     case TYPE_INT:
-        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
-            return "int";
-        else
-            return "unsigned_int";
+        return ty.sign == SIGN_UNSIGNED ? "unsigned_int" : "int";
     case TYPE_LONG:
-        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
-            return "long";
-        else
-            return "unsigned_long";
+        return ty.sign == SIGN_UNSIGNED ? "unsigned_long" : "long";
     case TYPE_FLOAT: return "float";
     case TYPE_DOUBLE: return "double";
     case TYPE_LDOUBLE: return "long_double";

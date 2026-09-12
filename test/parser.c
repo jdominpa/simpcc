@@ -320,6 +320,9 @@ DEFINE_TEST(test_postfix_chains)
 
 DEFINE_TEST(test_casts)
 {
+    expect_expr("(char) x", "(cast (type char) x)");
+    expect_expr("(signed char) x", "(cast (type signed_char) x)");
+    expect_expr("(unsigned char) x", "(cast (type unsigned_char) x)");
     expect_expr("(int) x", "(cast (type int) x)");
     expect_expr("(long) x", "(cast (type long) x)");
     expect_expr("(void) x", "(cast (type void) x)");
