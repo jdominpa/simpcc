@@ -573,7 +573,7 @@ static Expr *parse_expr_head(Parser *p)
     default:
         // TODO: use `diag_report_at` and try to recover from unexpected
         // expression
-        diag_fatal_at(t.loc, "unexpected expression `%.*s`", t.len, t.start);
+        diag_fatal_at(t.loc, "unexpected expression `%.*s`", (int) t.len, t.start);
     }
 }
 
@@ -838,7 +838,7 @@ Stmt *parse_stmt(Parser *p)
     default:
         // TODO: use `diag_report_at` and try to recover from the error
         diag_fatal_at(t.loc, "invalid statement `%.*s` encountered",
-                      t.len, t.start);
+                      (int) t.len, t.start);
     }
 }
 

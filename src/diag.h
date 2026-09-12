@@ -17,9 +17,9 @@ typedef enum {
     DIAG_FATAL,
 } DiagLevel;
 
-void diag_report_at(DiagLevel level, Loc loc, const char *fmt, ...);
-noreturn void diag_fatal(const char *fmt, ...);
-noreturn void diag_fatal_at(Loc loc, const char *fmt, ...);
+void diag_report_at(DiagLevel level, Loc loc, const char *fmt, ...) __attribute__((format(printf, 3, 4)));
+noreturn void diag_fatal(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
+noreturn void diag_fatal_at(Loc loc, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
 
 #define diag_report_at_token(level, t, fmt, ...) \
     diag_report_at((level), (t).loc, (fmt) __VA_OPT__(, ) __VA_ARGS__)
