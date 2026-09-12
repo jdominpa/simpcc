@@ -32,11 +32,18 @@ typedef enum {
     TYPE_COUNT,
 } TypeKind;
 
+
+typedef enum {
+    SIGN_UNSPECIFIED,
+    SIGN_SIGNED,
+    SIGN_UNSIGNED,
+} TypeSign;
+
 typedef struct Type Type;
 struct Type {
     TypeKind kind;
     Loc loc;
-    bool is_signed;
+    TypeSign sign;
     union {
         struct {
             Type *base;

@@ -78,22 +78,23 @@ const char *type_to_str(Type ty)
     case TYPE_VOID: return "void";
     case TYPE_BOOL: return "bool";
     case TYPE_CHAR:
-        if (ty.is_signed)
-            return "char";
-        else
-            return "unsigned_char";
+        switch (ty.sign) {
+        case SIGN_UNSPECIFIED: return "char";
+        case SIGN_SIGNED:      return "signed_char";
+        case SIGN_UNSIGNED:    return "unsigned_char";
+        }
     case TYPE_SHORT:
-        if (ty.is_signed)
+        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
             return "short";
         else
             return "unsigned_short";
     case TYPE_INT:
-        if (ty.is_signed)
+        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
             return "int";
         else
             return "unsigned_int";
     case TYPE_LONG:
-        if (ty.is_signed)
+        if (ty.sign == SIGN_UNSPECIFIED || ty.sign == SIGN_SIGNED)
             return "long";
         else
             return "unsigned_long";
