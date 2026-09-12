@@ -150,7 +150,7 @@ Type parse_type(Parser *p)
         else if (token_equal(t, "unsigned"))
             counter |= UNSIGNED;
         else
-            TODO("add support for missing type specifiers");
+            diag_fatal_at(t.loc, "add support for missing type specifiers");
 
         switch (counter) {
         case VOID:
@@ -742,6 +742,8 @@ Stmt *parse_stmt(Parser *p)
     Token t = parser_peek(p);
     parser_bump(p);
     switch (t.kind) {
+    case TK_EOF:
+        diag_fatal_at(t.loc, "unexpected %s found while parsing statement", token_kind_to_str[TK_EOF]);
     case TK_IDENT:
         if (parser_eat(p, TK_COLON)) {
             Stmt *s = arena_alloc(p->a, Stmt);
@@ -756,9 +758,9 @@ Stmt *parse_stmt(Parser *p)
             } else {
                 s->label.next = parse_stmt(p);
             }
-            /* s->label.next = parser_check(p, TK_CBRACE) ? NULL : parse_stmt(p); */
             return s;
-        }
+        } else
+            diag_fatal_at(t.loc, "implement the rest of stmts beginning with `TK_IDENT`");
     case TK_KW: {
         Stmt *s = arena_alloc(p->a, Stmt);
         if (token_equal(t, "while")) {
@@ -821,9 +823,8 @@ Stmt *parse_stmt(Parser *p)
             s->_return = parser_check(p, TK_SEMI) ? NULL : parse_expr(p);
             if (!parser_expect(p, TK_SEMI))
                 UNREACHABLE("parser_expect is currently nonreturnable");
-        } else {
-            TODO("implemenet the rest of statements that begin with keywords");
-        }
+        } else
+            diag_fatal_at(t.loc, "implemenet the rest of stmts beginning with `TK_KW`");
         return s;
     }
     case TK_OBRACE:
