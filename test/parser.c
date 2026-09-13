@@ -35,6 +35,23 @@ static void expect_input_consumed(Parser *p, const char *src)
            src, token_to_str(left));
 }
 
+static void expect_type(const char *src, const char *expected)
+{
+    Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
+    char *got = NULL;
+    size_t len = 0;
+    FILE *f = open_memstream(&got, &len);
+    print_type_compact(f, parse_type(&p));
+    fclose(f);
+
+    EXPECT(len == strlen(expected) && strcmp(got, expected) == 0,
+           "expected type `%s` but got `%s`", expected, got);
+    expect_input_consumed(&p, src);
+
+    free(got);
+    parser_free(&p);
+}
+
 static void expect_expr(const char *src, const char *expected)
 {
     Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
@@ -96,6 +113,37 @@ static void expect_stmt_from_file(const char *src, const char *file_name)
     parser_free(&p);
 }
 
+//
+// Type tests
+//
+
+DEFINE_TEST(test_arith_types)
+{
+    expect_type("char", "(type char)");
+    expect_type("signed char", "(type signed char)");
+    expect_type("unsigned char", "(type unsigned char)");
+    expect_type("int", "(type int)");
+    expect_type("signed", "(type int)");
+    expect_type("unsigned", "(type unsigned int)");
+    expect_type("int *", "(type int *)");
+    expect_type("int **", "(type int **)");
+}
+
+DEFINE_TEST(test_qualified_types)
+{
+    expect_type("const int", "(type const int)");
+    expect_type("volatile int", "(type volatile int)");
+    expect_type("restrict int", "(type restrict int)");
+    expect_type("const volatile int", "(type const volatile int)");
+    expect_type("volatile const int", "(type const volatile int)");
+    expect_type("const int volatile", "(type const volatile int)");
+    expect_type("const const int", "(type const int)");
+    expect_type("const int *", "(type const int *)");
+    expect_type("int *const", "(type int *const)");
+}
+
+//
+// Expression tests
 //
 // Literals and identifiers
 //
@@ -524,9 +572,34 @@ DEFINE_TEST(test_return_statements)
     expect_stmt_from_file("return f(x);", "test_return_call_stmt");
 }
 
+//
+// Fatal error paths
+//
+// These call diag_fatal_at(), which exits the process, so each one runs in a
+// forked child. Skipped on Windows, which has no fork().
+//
+
+#ifndef _WIN32
+
+DEFINE_TEST(test_void_cast_fatal_paths)
+{
+    EXPECT_EXIT(1, {
+        expect_type("signed void", "");
+    });
+    EXPECT_EXIT(1, {
+        expect_type("unsigned void", "");
+    });
+}
+
+#endif  // _WIN32
+
 int main(void)
 {
     g_test_ctx.test_arena = arena_init();
+
+    // Type tests
+    RUN_TEST(test_arith_types);
+    RUN_TEST(test_qualified_types);
 
     // Expression tests
     RUN_TEST(test_literals);
@@ -566,6 +639,12 @@ int main(void)
     RUN_TEST(test_if_statement_nesting);
     RUN_TEST(test_jump_statements);
     RUN_TEST(test_return_statements);
+
+    // Fatal path tests
+#ifndef _WIN32
+    RUN_TEST(test_void_cast_fatal_paths);
+#endif
+
     TEST_SUMMARY();
     return 0;
 }
