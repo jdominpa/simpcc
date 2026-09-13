@@ -133,7 +133,7 @@ DEFINE_TEST(test_qualified_types)
 {
     expect_type("const int", "(type const int)");
     expect_type("volatile int", "(type volatile int)");
-    expect_type("restrict int", "(type restrict int)");
+    expect_type("restrict int *", "(type restrict int *)");
     expect_type("const volatile int", "(type const volatile int)");
     expect_type("volatile const int", "(type const volatile int)");
     expect_type("const int volatile", "(type const volatile int)");
