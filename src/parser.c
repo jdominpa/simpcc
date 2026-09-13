@@ -135,7 +135,12 @@ typedef struct {
     bool saw_arith;  // void/char/int/... present?
 } DeclSpec;
 
-static DeclSpec parse_decl_spec(Parser *p, bool allow_storage_class)
+// Parses a run of declaration specifiers. `allow_decl_specifiers` determines
+// the grammar the declspec belongs to: a declaration takes the full
+// declaration-specifiers, while a type-name (a cast, `sizeof`, `_Alignof`)
+// takes a specifier-qualifier-list, where storage classes and function
+// specifiers are a constraint violation.
+static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
 {
     DeclSpec spec = { 0 };
     spec.base = arena_alloc(p->a, Type);
@@ -157,14 +162,17 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_storage_class)
     };
 
     spec.loc = parser_peek(p).loc;
+    const size_t start_pos = p->pos;
     for (;;) {
         Token t = parser_peek(p);
 
         // Storage class specifiers
         if (token_equal(t, "typedef") || token_equal(t, "extern") || token_equal(t, "static") ||
             token_equal(t, "auto") || token_equal(t, "register")) {
-            if (!allow_storage_class)
-                diag_fatal_at(t.loc, "storage specifiers are not allowed in this declaration");
+            if (!allow_decl_specifiers)
+                diag_fatal_at(t.loc,
+                              "storage class specifier `%.*s` is not allowed in a type name",
+                              (int) t.len, t.start);
             if (spec.storage != STORAGE_NONE)
                 // TODO: print the original and current specifiers
                 diag_fatal_at(t.loc, "multiple storage specifiers found in declaration");
@@ -185,13 +193,17 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_storage_class)
         }
 
         // Function specifiers
-        if (token_equal(t, "inline")) {
-            spec.is_inline = true;
-            parser_bump(p);
-            continue;
-        }
-        if (token_equal(t, "_Noreturn")) {
-            spec.is_noreturn = true;
+        if (token_equal(t, "inline") || token_equal(t, "_Noreturn")) {
+            if (!allow_decl_specifiers)
+                diag_fatal_at(t.loc,
+                              "function specifier `%.*s` is not allowed in a type name",
+                              (int) t.len, t.start);
+
+            if (token_equal(t, "inline"))
+                spec.is_inline = true;
+            else
+                spec.is_noreturn = true;
+
             parser_bump(p);
             continue;
         }
@@ -339,8 +351,11 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_storage_class)
             diag_fatal_at(spec.loc, "invalid type");
         }
     } else if (!spec.has_base_type) {
-        // TODO: no type specifier at all. In C99+ `static x;` is an error
-        //       rather than an implicit int.
+        // A DeclSpec with no type specifier names no type at all
+        if (p->pos == start_pos)
+            diag_fatal_at(spec.loc, "expected a type but found %s",
+                          token_to_str(parser_peek(p)));
+        diag_fatal_at(spec.loc, "declaration specifiers name no type");
     }
 
     spec.base->quals = quals;

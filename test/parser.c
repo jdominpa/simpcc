@@ -583,12 +583,33 @@ DEFINE_TEST(test_return_statements)
 
 DEFINE_TEST(test_void_cast_fatal_paths)
 {
-    EXPECT_EXIT(1, {
-        expect_type("signed void", "");
-    });
-    EXPECT_EXIT(1, {
-        expect_type("unsigned void", "");
-    });
+    EXPECT_EXIT(1, { expect_type("signed void", ""); });
+    EXPECT_EXIT(1, { expect_type("unsigned void", ""); });
+}
+
+// A type name is a specifier-qualifier-list: it admits type specifiers and
+// qualifiers, but not the storage class and function specifiers that a full
+// declaration allows.
+DEFINE_TEST(test_type_name_rejects_decl_specifiers)
+{
+    EXPECT_EXIT(1, { expect_type("typedef int", ""); });
+    EXPECT_EXIT(1, { expect_type("extern int", ""); });
+    EXPECT_EXIT(1, { expect_type("static int", ""); });
+    EXPECT_EXIT(1, { expect_type("auto int", ""); });
+    EXPECT_EXIT(1, { expect_type("register int", ""); });
+    EXPECT_EXIT(1, { expect_type("inline int", ""); });
+    EXPECT_EXIT(1, { expect_type("_Noreturn int", ""); });
+    EXPECT_EXIT(1, { expect_expr("sizeof(inline int)", ""); });
+    EXPECT_EXIT(1, { expect_expr("_Alignof(static int)", ""); });
+}
+
+DEFINE_TEST(test_missing_type_specifier_is_fatal)
+{
+    EXPECT_EXIT(1, { expect_type("const", ""); });
+    EXPECT_EXIT(1, { expect_type("volatile", ""); });
+    EXPECT_EXIT(1, { expect_type("const volatile", ""); });
+    EXPECT_EXIT(1, { expect_expr("sizeof(const)", ""); });
+    EXPECT_EXIT(1, { expect_expr("sizeof()", ""); });
 }
 
 #endif  // _WIN32
@@ -643,6 +664,8 @@ int main(void)
     // Fatal path tests
 #ifndef _WIN32
     RUN_TEST(test_void_cast_fatal_paths);
+    RUN_TEST(test_type_name_rejects_decl_specifiers);
+    RUN_TEST(test_missing_type_specifier_is_fatal);
 #endif
 
     TEST_SUMMARY();
