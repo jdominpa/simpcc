@@ -102,14 +102,46 @@ static bool is_type(const Scope *sc, Token t)
     return false;
 }
 
-// TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_ARRAY, TYPE_VLA,
-// TYPE_STRUCT, TYPE_UNION, TYPE_NAMED
-Type parse_type(Parser *p)
+static bool is_type_qual(const Token t)
 {
-    if (parser_at_eof(p))
-        diag_fatal_at(parser_peek(p).loc, "unexpected end of file encountered while parsing type");
+    if (t.kind != TK_KW) return false;
+    return token_equal(t, "const") || token_equal(t, "volatile") || token_equal(t, "restrict");
+}
 
-    Type ty = { 0 };
+static uint8_t parse_type_quals(Parser *p)
+{
+    uint8_t quals = 0;
+    Token t = parser_peek(p);
+    while (is_type_qual(t)) {
+        if (token_equal(t, "const"))
+            quals |= QUAL_CONST;
+        else if (token_equal(t, "volatile"))
+            quals |= QUAL_VOLATILE;
+        else
+            quals |= QUAL_RESTRICT;
+        parser_bump(p);
+        t = parser_peek(p);
+    }
+    return quals;
+}
+
+typedef struct {
+    Loc loc;
+    StorageClass storage;
+    Type *base;
+    bool is_inline;
+    bool is_noreturn;
+    bool has_base_type;
+    bool saw_arith;  // void/char/int/... present?
+} DeclSpec;
+
+static DeclSpec parse_decl_spec(Parser *p, bool allow_storage_class)
+{
+    DeclSpec spec = { 0 };
+    spec.base = arena_alloc(p->a, Type);
+    *spec.base = (Type) { 0 };
+    uint32_t counter = 0;
+    uint8_t quals = 0;
     enum {
         VOID     = 1 << 0,
         BOOL     = 1 << 2,
@@ -124,128 +156,227 @@ Type parse_type(Parser *p)
         UNSIGNED = 1 << 18,
     };
 
-    // Built-in types
-    uint32_t counter = 0;
-    Token t = parser_peek(p);
-    ty.loc = t.loc;
-    while (is_type(&p->sc, t)) {
-        if (token_equal(t, "void"))
-            counter += VOID;
-        else if (token_equal(t, "bool"))
-            counter += BOOL;
-        else if (token_equal(t, "char"))
-            counter += CHAR;
-        else if (token_equal(t, "short"))
-            counter += SHORT;
-        else if (token_equal(t, "int"))
-            counter += INT;
-        else if (token_equal(t, "long"))
-            counter += LONG;
-        else if (token_equal(t, "float"))
-            counter += FLOAT;
-        else if (token_equal(t, "double"))
-            counter += DOUBLE;
-        else if (token_equal(t, "signed"))
-            counter |= SIGNED;
-        else if (token_equal(t, "unsigned"))
-            counter |= UNSIGNED;
-        else
-            diag_fatal_at(t.loc, "add support for missing type specifiers");
+    spec.loc = parser_peek(p).loc;
+    for (;;) {
+        Token t = parser_peek(p);
 
+        // Storage class specifiers
+        if (token_equal(t, "typedef") || token_equal(t, "extern") || token_equal(t, "static") ||
+            token_equal(t, "auto") || token_equal(t, "register")) {
+            if (!allow_storage_class)
+                diag_fatal_at(t.loc, "storage specifiers are not allowed in this declaration");
+            if (spec.storage != STORAGE_NONE)
+                // TODO: print the original and current specifiers
+                diag_fatal_at(t.loc, "multiple storage specifiers found in declaration");
+
+            if (token_equal(t, "typedef"))
+                spec.storage = STORAGE_TYPEDEF;
+            else if (token_equal(t, "extern"))
+                spec.storage = STORAGE_EXTERN;
+            else if (token_equal(t, "static"))
+                spec.storage = STORAGE_STATIC;
+            else if (token_equal(t, "auto"))
+                spec.storage = STORAGE_AUTO;
+            else
+                spec.storage = STORAGE_REGISTER;
+
+            parser_bump(p);
+            continue;
+        }
+
+        // Function specifiers
+        if (token_equal(t, "inline")) {
+            spec.is_inline = true;
+            parser_bump(p);
+            continue;
+        }
+        if (token_equal(t, "_Noreturn")) {
+            spec.is_noreturn = true;
+            parser_bump(p);
+            continue;
+        }
+
+        // Type qualifiers
+        if (is_type_qual(t)) {
+            quals |= parse_type_quals(p);
+            continue;
+        }
+
+        // Arithmetic types
+        if (token_equal(t, "void") || token_equal(t, "bool") || token_equal(t, "char") ||
+            token_equal(t, "short") || token_equal(t, "int") || token_equal(t, "long") ||
+            token_equal(t, "float") || token_equal(t, "double") || token_equal(t, "signed") ||
+            token_equal(t, "unsigned")) {
+            if (token_equal(t, "void"))
+                counter += VOID;
+            else if (token_equal(t, "bool"))
+                counter += BOOL;
+            else if (token_equal(t, "char"))
+                counter += CHAR;
+            else if (token_equal(t, "short"))
+                counter += SHORT;
+            else if (token_equal(t, "int"))
+                counter += INT;
+            else if (token_equal(t, "long"))
+                counter += LONG;
+            else if (token_equal(t, "float"))
+                counter += FLOAT;
+            else if (token_equal(t, "double"))
+                counter += DOUBLE;
+            else if (token_equal(t, "signed"))
+                counter |= SIGNED;
+            else
+                counter |= UNSIGNED;
+
+            spec.saw_arith = true;
+            spec.has_base_type = true;
+            parser_bump(p);
+            continue;
+        }
+
+        // Struct / union / enum
+        if (token_equal(t, "struct") || token_equal(t, "union") || token_equal(t, "enum")) {
+            TODO("parse_decl_spec: struct/union/enum");
+            // TODO: consult the tag namespace; may also *define* a type inline.
+            //       Sets ds.base directly and ds.has_base_type.
+        }
+
+        // Typedef types
+        if (t.kind == TK_IDENT && !spec.has_base_type) {
+            Symbol *found = scope_lookup_var_n(&p->sc, t.start, t.len);
+            if (found == NULL || found->kind != SYMBOL_TYPEDEF) break;
+            spec.base->kind = TYPE_NAMED;
+            spec.base->named.name = found->name;
+            spec.base->named.ty = found->ty;
+            spec.has_base_type = true;
+            quals |= found->ty->quals;
+            parser_bump(p);
+            continue;
+        }
+
+        break;
+    }
+
+    if (spec.saw_arith) {
         switch (counter) {
         case VOID:
-            ty.kind = TYPE_VOID;
+            spec.base->kind = TYPE_VOID;
             break;
         case VOID + SIGNED:
-            diag_fatal_at(ty.loc, "type `void` is incompatible with type modifier `signed`");
+            diag_fatal_at(spec.loc, "type `void` is incompatible with type modifier `signed`");
         case VOID + UNSIGNED:
-            diag_fatal_at(ty.loc, "type `void` is incompatible with type modifier `unsigned`");
+            diag_fatal_at(spec.loc, "type `void` is incompatible with type modifier `unsigned`");
         case BOOL:
-            ty.kind = TYPE_BOOL;
+            spec.base->kind = TYPE_BOOL;
             break;
         case BOOL + SIGNED:
-            diag_fatal_at(ty.loc, "type `bool` is incompatible with type modifier `unsigned`");
+            diag_fatal_at(spec.loc, "type `bool` is incompatible with type modifier `unsigned`");
         case BOOL + UNSIGNED:
-            diag_fatal_at(ty.loc, "type `bool` is incompatible with type modifier `unsigned`");
+            diag_fatal_at(spec.loc, "type `bool` is incompatible with type modifier `unsigned`");
         case CHAR:
-            ty.kind = TYPE_CHAR;
-            ty.sign = SIGN_UNSPECIFIED;
+            spec.base->kind = TYPE_CHAR;
+            spec.base->sign = SIGN_UNSPECIFIED;
             break;
         case CHAR + SIGNED:
-            ty.kind = TYPE_CHAR;
-            ty.sign = SIGN_SIGNED;
+            spec.base->kind = TYPE_CHAR;
+            spec.base->sign = SIGN_SIGNED;
             break;
         case CHAR + UNSIGNED:
-            ty.kind = TYPE_CHAR;
-            ty.sign = SIGN_UNSIGNED;
+            spec.base->kind = TYPE_CHAR;
+            spec.base->sign = SIGN_UNSIGNED;
             break;
         case SHORT:
         case SHORT + INT:
         case SHORT + SIGNED:
         case SHORT + INT + SIGNED:
-            ty.kind = TYPE_SHORT;
-            ty.sign = SIGN_SIGNED;
+            spec.base->kind = TYPE_SHORT;
+            spec.base->sign = SIGN_SIGNED;
             break;
         case SHORT + UNSIGNED:
         case SHORT + INT + UNSIGNED:
-            ty.kind = TYPE_SHORT;
-            ty.sign = SIGN_UNSIGNED;
+            spec.base->kind = TYPE_SHORT;
+            spec.base->sign = SIGN_UNSIGNED;
             break;
         case INT:
         case INT + SIGNED:
         case SIGNED:
-            ty.kind = TYPE_INT;
-            ty.sign = SIGN_SIGNED;
+            spec.base->kind = TYPE_INT;
+            spec.base->sign = SIGN_SIGNED;
             break;
         case UNSIGNED:
         case UNSIGNED + INT:
-            ty.kind = TYPE_INT;
-            ty.sign = SIGN_UNSIGNED;
+            spec.base->kind = TYPE_INT;
+            spec.base->sign = SIGN_UNSIGNED;
             break;
         case LONG:
         case LONG + INT:
-        case LONG + LONG:
-        case LONG + LONG + INT:
         case LONG + SIGNED:
         case LONG + INT + SIGNED:
+        case LONG + LONG:
+        case LONG + LONG + INT:
         case LONG + LONG + SIGNED:
         case LONG + LONG + INT + SIGNED:
-            ty.kind = TYPE_LONG;
-            ty.sign = SIGN_SIGNED;
+            spec.base->kind = TYPE_LONG;
+            spec.base->sign = SIGN_SIGNED;
             break;
         case LONG + UNSIGNED:
         case LONG + INT + UNSIGNED:
         case LONG + LONG + UNSIGNED:
         case LONG + LONG + INT + UNSIGNED:
-            ty.kind = TYPE_LONG;
-            ty.sign = SIGN_UNSIGNED;
+            spec.base->kind = TYPE_LONG;
+            spec.base->sign = SIGN_UNSIGNED;
             break;
         case FLOAT:
-            ty.kind = TYPE_FLOAT;
+            spec.base->kind = TYPE_FLOAT;
             break;
         case DOUBLE:
-            ty.kind = TYPE_DOUBLE;
+            spec.base->kind = TYPE_DOUBLE;
             break;
         case LONG + DOUBLE:
-            ty.kind = TYPE_LDOUBLE;
+            spec.base->kind = TYPE_LDOUBLE;
             break;
         default:
-            diag_fatal_at(ty.loc, "invalid type");
+            diag_fatal_at(spec.loc, "invalid type");
         }
-
-        parser_bump(p);
-        t = parser_peek(p);
+    } else if (!spec.has_base_type) {
+        // TODO: no type specifier at all. In C99+ `static x;` is an error
+        //       rather than an implicit int.
     }
 
-    // Check for pointer suffixes
-    while (parser_eat(p, TK_STAR)) {
-        Type *base = arena_alloc(p->a, Type);
-        *base = ty;
-        ty.kind = TYPE_PTR;
-        ty.ptr.base = base;
+    spec.base->quals = quals;
+    spec.base->loc = spec.loc;
+    return spec;
+}
+
+static Type *parse_declarator(Parser *p, const Type *base)
+{
+    Type *ty = arena_alloc(p->a, Type);
+    *ty = *base;
+
+    while (parser_check(p, TK_STAR)) {
+        Type *inner = arena_alloc(p->a, Type);
+        *inner = *ty;
+        *ty = (Type) { .kind = TYPE_PTR,
+                       .loc = parser_peek(p).loc,
+                       .ptr.base = inner };
+        parser_bump(p);
+        ty->quals |= parse_type_quals(p);
     }
 
     return ty;
+}
+
+// TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_ARRAY, TYPE_VLA,
+// TYPE_STRUCT, TYPE_UNION, TYPE_NAMED
+Type *parse_type(Parser *p)
+{
+    if (parser_at_eof(p))
+        diag_fatal_at(parser_peek(p).loc,
+                      "unexpected %s encountered while parsing type",
+                      token_kind_to_str[TK_EOF]);
+
+    DeclSpec spec = parse_decl_spec(p, false);
+    return parse_declarator(p, spec.base);
 }
 
 //

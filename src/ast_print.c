@@ -1,8 +1,10 @@
 #include "ast_print.h"
 
 #include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+
 #include "ast.h"
 #include "common.h"
 
@@ -10,7 +12,8 @@
 
 static const char *unop_kind_to_str(UnopKind kind)
 {
-    static_assert(UNOP_COUNT == 10, "unop_kind_to_str: `UNOP_COUNT` value has changed");
+    static_assert(UNOP_COUNT == 10,
+                  "unop_kind_to_str: `UNOP_COUNT` value has changed");
     switch (kind) {
     case UNOP_POS:      return "+";
     case UNOP_NEG:      return "-";
@@ -22,13 +25,15 @@ static const char *unop_kind_to_str(UnopKind kind)
     case UNOP_PRE_DEC:  return "-- (pre)";
     case UNOP_POST_INC: return "++ (post)";
     case UNOP_POST_DEC: return "-- (post)";
-    default: UNREACHABLE("unop_kind_to_str");
+    case UNOP_COUNT:    break;
     }
+    UNREACHABLE("unop_kind_to_str");
 }
 
 static const char *binop_kind_to_str(BinopKind kind)
 {
-    static_assert(BINOP_COUNT == 19, "binop_kind_to_str: `BINOP_COUNT` value has changed");
+    static_assert(BINOP_COUNT == 19,
+                  "binop_kind_to_str: `BINOP_COUNT` value has changed");
     switch (kind) {
     case BINOP_COMMA:   return ",";
     case BINOP_OR:      return "||";
@@ -49,13 +54,15 @@ static const char *binop_kind_to_str(BinopKind kind)
     case BINOP_MULT:    return "*";
     case BINOP_DIV:     return "/";
     case BINOP_MOD:     return "%";
-    default: UNREACHABLE("binop_kind_to_str");
+    case BINOP_COUNT:   break;
     }
+    UNREACHABLE("binop_kind_to_str");
 }
 
 static const char *assign_kind_to_str(AssignKind kind)
 {
-    static_assert(ASSIGN_COUNT == 11, "assign_kind_to_str: `ASSIGN_COUNT` value has changed");
+    static_assert(ASSIGN_COUNT == 11,
+                  "assign_kind_to_str: `ASSIGN_COUNT` value has changed");
     switch (kind) {
     case ASSIGN_AND:   return "&=";
     case ASSIGN_XOR:   return "^=";
@@ -68,57 +75,154 @@ static const char *assign_kind_to_str(AssignKind kind)
     case ASSIGN_PLUS:  return "+=";
     case ASSIGN_MINUS: return "-=";
     case ASSIGN_EQ:    return "=";
-    default: UNREACHABLE("assign_kind_to_str");
+    case ASSIGN_COUNT: break;
+    }
+    UNREACHABLE("assign_kind_to_str");
+}
+
+// Writes the qualifier keywords held in `quals` to `buf`, separated by single
+// spaces, or the empty string when there are none.
+static const char *type_quals_to_str(char *buf, size_t size, uint8_t quals)
+{
+    const struct {
+        TypeQual qual;
+        const char *name;
+    } qual_names[] = {
+        { QUAL_CONST,    "const"    },
+        { QUAL_VOLATILE, "volatile" },
+        { QUAL_RESTRICT, "restrict" },
+    };
+    const char *sep = "";
+    size_t used = 0;
+    buf[0] = '\0';
+    for (size_t i = 0; i < sizeof qual_names / sizeof *qual_names; ++i) {
+        if (!(quals & qual_names[i].qual)) continue;
+        int n = snprintf(buf + used, size - used, "%s%s", sep,
+                         qual_names[i].name);
+        if (n < 0 || (size_t) n >= size - used) break;
+        used += (size_t) n;
+        sep = " ";
+    }
+    return buf;
+}
+
+static const char *type_sign_and_kind_to_str(const Type *ty)
+{
+    static_assert(TYPE_COUNT == 17,
+                  "type_sign_and_kind_to_str: `TYPE_COUNT` value has changed");
+    switch (ty->kind) {
+    case TYPE_VOID:
+        return "void";
+    case TYPE_BOOL:
+        return "bool";
+    case TYPE_CHAR:
+        switch (ty->sign) {
+        case SIGN_UNSPECIFIED: return "char";
+        case SIGN_SIGNED:      return "signed char";
+        case SIGN_UNSIGNED:    return "unsigned char";
+        }
+        break;
+    case TYPE_SHORT:
+        return ty->sign == SIGN_UNSIGNED ? "unsigned short" : "short";
+    case TYPE_INT:
+        return ty->sign == SIGN_UNSIGNED ? "unsigned int" : "int";
+    case TYPE_LONG:
+        return ty->sign == SIGN_UNSIGNED ? "unsigned long" : "long";
+    case TYPE_FLOAT:
+        return "float";
+    case TYPE_DOUBLE:
+        return "double";
+    case TYPE_LDOUBLE:
+        return "long double";
+    case TYPE_NAMED:
+        return ty->named.name;
+    case TYPE_ENUM:
+        TODO("type_sign_and_kind_to_str: implement `TYPE_ENUM`");
+    case TYPE_STRUCT:
+        TODO("type_sign_and_kind_to_str: implement `TYPE_STRUCT`");
+    case TYPE_UNION:
+        TODO("type_sign_and_kind_to_str: implement `TYPE_UNION`");
+    // Derived types are spelled by `type_to_str_rec`, never here.
+    case TYPE_PTR:
+    case TYPE_FUNC:
+    case TYPE_ARRAY:
+    case TYPE_VLA:
+    case TYPE_COUNT:
+        break;
+    }
+    UNREACHABLE("type_sign_and_kind_to_str");
+}
+
+// Base type a declarator is applied to, qualifiers included: the `const int` of
+// `const int *`.
+static void base_type_to_str(char *buf, size_t size, const Type *ty)
+{
+    char quals[QUALS_STR_CAP];
+    type_quals_to_str(quals, sizeof quals, ty->quals);
+    snprintf(buf, size, "%s%s%s", quals, quals[0] != '\0' ? " " : "",
+             type_sign_and_kind_to_str(ty));
+}
+
+// A qualifier keyword needs a space after it only when the next character would
+// otherwise run into the keyword: `int *const *p` needs one, `int *const[5]`
+// and `int (*const)[5]` do not.
+static inline bool quals_need_space(const char *decl)
+{
+    return decl[0] == '*' || decl[0] == '_' || isalpha(decl[0]);
+}
+
+// Builds the C spelling of `ty` by wrapping `decl`, the declarator text
+// accumulated by the levels already visited. C declarators are read from the
+// name outwards, so this walks from the outermost type inwards and prefixes or
+// suffixes `decl` at each step, parenthesising when a prefix `*` would
+// otherwise bind looser than a following `[]` or `()`.
+static void type_to_str_rec(char *buf, size_t size, const Type *ty,
+                            const char *decl)
+{
+    switch (ty->kind) {
+    case TYPE_PTR: {
+        char quals[QUALS_STR_CAP];
+        char inner[TYPE_STR_CAP];
+        type_quals_to_str(quals, sizeof quals, ty->quals);
+
+        // `*` binds looser than the postfix `[]` and `()`, so a pointer to an
+        // array or a function needs parentheses: `int (*)[5]`, not `int *[5]`.
+        const TypeKind base_kind = ty->ptr.base->kind;
+        bool parens = base_kind == TYPE_ARRAY || base_kind == TYPE_VLA ||
+                      base_kind == TYPE_FUNC;
+        snprintf(inner, sizeof inner, "%s*%s%s%s%s", parens ? "(" : "", quals,
+                 quals[0] != '\0' && quals_need_space(decl) ? " " : "", decl,
+                 parens ? ")" : "");
+        type_to_str_rec(buf, size, ty->ptr.base, inner);
+        return;
+    }
+    case TYPE_ARRAY: {
+        char inner[TYPE_STR_CAP];
+        snprintf(inner, sizeof inner, "%s[%zu]", decl, ty->array.size);
+        type_to_str_rec(buf, size, ty->array.base, inner);
+        return;
+    }
+    case TYPE_VLA:
+        TODO("type_to_str_rec: implement `TYPE_VLA`");
+    case TYPE_FUNC:
+        TODO("type_to_str_rec: implement `TYPE_FUNC`");
+    default: {
+        char base[TYPE_STR_CAP];
+        base_type_to_str(base, sizeof base, ty);
+        snprintf(buf, size, "%s%s%s", base, decl[0] != '\0' ? " " : "", decl);
+        return;
+    }
     }
 }
 
-const char *type_to_str(Type ty)
+// Writes the C spelling of `ty` into `buf` and returns it. `buf` should be at
+// least `TYPE_STR_CAP` bytes; longer spellings are truncated rather than
+// overflowing. Takes a caller-supplied buffer so that two types can be
+// formatted in a single call (`"cannot assign %s to %s"`).
+const char *type_to_str(char *buf, size_t size, const Type *ty)
 {
-    switch (ty.kind) {
-    case TYPE_VOID: return "void";
-    case TYPE_BOOL: return "bool";
-    case TYPE_CHAR:
-        switch (ty.sign) {
-        case SIGN_UNSPECIFIED: return "char";
-        case SIGN_SIGNED:      return "signed_char";
-        case SIGN_UNSIGNED:    return "unsigned_char";
-        }
-        UNREACHABLE("type_to_str");
-        break;
-    case TYPE_SHORT:
-        return ty.sign == SIGN_UNSIGNED ? "unsigned_short" : "short";
-    case TYPE_INT:
-        return ty.sign == SIGN_UNSIGNED ? "unsigned_int" : "int";
-    case TYPE_LONG:
-        return ty.sign == SIGN_UNSIGNED ? "unsigned_long" : "long";
-    case TYPE_FLOAT: return "float";
-    case TYPE_DOUBLE: return "double";
-    case TYPE_LDOUBLE: return "long_double";
-    case TYPE_PTR: {
-        // Count number of stars
-        int ptr_count = 0;
-        Type *base = &ty;
-        while (base->kind == TYPE_PTR) {
-            ptr_count++;
-            base = base->ptr.base;
-        }
-
-        // Base type string
-        const char *base_str = type_to_str(*base);
-
-        // Stars string
-        char stars[ptr_count + 1];
-        memset(stars, '*', ptr_count);
-        stars[ptr_count] = '\0';
-
-        // Full type string
-        static char buf[64];
-        sprintf(buf, "%s%s", base_str, stars);
-        return buf;
-    }
-    default:
-        UNREACHABLE("type_kind_to_str");
-    }
+    type_to_str_rec(buf, size, ty, "");
+    return buf;
 }
 
 typedef struct {
@@ -134,11 +238,19 @@ static inline void print_loc(PrintCtx *ctx, Loc loc)
         fprintf(ctx->out, " <%zu:%zu>", loc.line, loc.col);
 }
 
-static void print_type_ctx(PrintCtx *ctx, const Type ty);
+static void print_type_quals_field(PrintCtx *ctx, const uint8_t quals)
+{
+    if (quals == 0) return;
+    char buf[QUALS_STR_CAP];
+    fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
+    fprintf(ctx->out, "quals: %s", type_quals_to_str(buf, sizeof buf, quals));
+}
+
+static void print_type_ctx(PrintCtx *ctx, const Type *ty);
 static void print_expr_ctx(PrintCtx *ctx, const Expr *e);
 static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s);
 
-static void print_type_field(PrintCtx *ctx, const char *label, const Type ty)
+static void print_type_field(PrintCtx *ctx, const char *label, const Type *ty)
 {
     if (ctx->compact) {
         fprintf(ctx->out, " ");
@@ -180,11 +292,17 @@ static void print_stmt_field(PrintCtx *ctx, const char *label, const Stmt *s)
     ctx->depth--;
 }
 
-// TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_VLA, TYPE_STRUCT,
-// TYPE_UNION, TYPE_NAMED
-static void print_type_ctx(PrintCtx *ctx, const Type ty)
+static void print_type_ctx(PrintCtx *ctx, const Type *ty)
 {
-    switch (ty.kind) {
+    static_assert(TYPE_COUNT == 17,
+                  "print_type_ctx: `TYPE_COUNT` value has changed");
+
+    if (ctx->compact) {
+        fprintf(ctx->out, "(type %s)", TYPE_TO_STR(ty));
+        return;
+    }
+
+    switch (ty->kind) {
     case TYPE_VOID:
     case TYPE_BOOL:
     case TYPE_CHAR:
@@ -195,23 +313,27 @@ static void print_type_ctx(PrintCtx *ctx, const Type ty)
     case TYPE_DOUBLE:
     case TYPE_LDOUBLE:
         fprintf(ctx->out, "(type");
-        print_loc(ctx, ty.loc);
-        fprintf(ctx->out, " %s)", type_to_str(ty));
+        print_loc(ctx, ty->loc);
+        fprintf(ctx->out, " %s", type_sign_and_kind_to_str(ty));
+        print_type_quals_field(ctx, ty->quals);
+        fprintf(ctx->out, ")");
         break;
     case TYPE_ENUM:
         TODO("print_type_ctx: implement `TYPE_ENUM`");
     case TYPE_PTR:
         fprintf(ctx->out, "(ptr_type");
-        print_loc(ctx, ty.loc);
-        print_type_field(ctx, "base", *ty.ptr.base);
+        print_loc(ctx, ty->loc);
+        print_type_quals_field(ctx, ty->quals);
+        print_type_field(ctx, "base", ty->ptr.base);
         fprintf(ctx->out, ")");
         break;
     case TYPE_FUNC:
         TODO("print_type_ctx: implement `TYPE_FUNC`");
     case TYPE_ARRAY:
-        fprintf(ctx->out, "(array_type[%zu]", ty.array.size);
-        print_loc(ctx, ty.loc);
-        print_type_field(ctx, "base", *ty.array.base);
+        fprintf(ctx->out, "(array_type[%zu]", ty->array.size);
+        print_loc(ctx, ty->loc);
+        print_type_quals_field(ctx, ty->quals);
+        print_type_field(ctx, "base", ty->array.base);
         fprintf(ctx->out, ")");
         break;
     case TYPE_VLA:
@@ -234,6 +356,8 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
         return;
     }
 
+    static_assert(EXPR_COUNT == 17,
+                  "print_expr_ctx: `EXPR_COUNT` value has changed");
     switch (e->kind) {
     case EXPR_CHAR:
         if (ctx->compact) {
@@ -375,6 +499,8 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         return;
     }
 
+    static_assert(STMT_COUNT == 16,
+                  "print_stmt_ctx: `STMT_COUNT` value has changed");
     switch (s->kind) {
     case STMT_NULL:
         fprintf(ctx->out, "(null_stmt");
@@ -461,7 +587,7 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
     }
 }
 
-void print_type(FILE *out, const Type ty, uint32_t depth)
+void print_type(FILE *out, const Type *ty, uint32_t depth)
 {
     PrintCtx ctx = {
         .out = out,
@@ -472,7 +598,7 @@ void print_type(FILE *out, const Type ty, uint32_t depth)
     print_type_ctx(&ctx, ty);
 }
 
-void print_type_compact(FILE *out, const Type ty)
+void print_type_compact(FILE *out, const Type *ty)
 {
     PrintCtx ctx = {
         .out = out,

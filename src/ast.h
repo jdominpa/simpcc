@@ -2,6 +2,7 @@
 #define AST_H_
 
 #include <stdbool.h>
+#include <stdint.h>
 
 #include "arena.h"
 #include "common.h"
@@ -32,6 +33,11 @@ typedef enum {
     TYPE_COUNT,
 } TypeKind;
 
+typedef enum {
+    QUAL_CONST    = 1 << 0,
+    QUAL_VOLATILE = 1 << 1,
+    QUAL_RESTRICT = 1 << 2,
+} TypeQual;
 
 typedef enum {
     SIGN_UNSPECIFIED,
@@ -43,6 +49,7 @@ typedef struct Type Type;
 struct Type {
     TypeKind kind;
     Loc loc;
+    uint8_t quals;
     TypeSign sign;
     union {
         struct {
@@ -54,7 +61,7 @@ struct Type {
         } array;
         struct {
             const char *name;
-            size_t len;
+            Type *ty;
         } named;
     };
 };
@@ -184,18 +191,27 @@ struct Expr {
             const char *field;
         } field;
         struct {
-            Type type;
+            Type *type;
             Expr *expr;
         } cast;
-        Type sizeof_ty;
+        Type *sizeof_ty;
         Expr *sizeof_expr;
-        Type alignof_ty;
+        Type *alignof_ty;
     };
 };
 
 //
 // Statements
 //
+
+typedef enum {
+    STORAGE_NONE,
+    STORAGE_TYPEDEF,
+    STORAGE_EXTERN,
+    STORAGE_STATIC,
+    STORAGE_AUTO,
+    STORAGE_REGISTER,
+} StorageClass;
 
 typedef enum {
     STMT_NULL,     // ";"
@@ -233,7 +249,8 @@ struct Stmt {
         } label;
         const char *goto_label;
         struct {
-            Type type;
+            StorageClass storage;
+            Type *ty;
             Expr *var;
             Expr *value;
         } decl;
@@ -299,13 +316,13 @@ typedef struct {
             Stmt body;
         } _union;
         struct {
-            Type orig;
-            Type new;
+            Type *orig;
+            Type *new;
         } _typedef;
         struct {
-            Type ret_type;
+            Type *ret_type;
             const char *name;
-            Type *param_types;
+            Type **param_types;
             const char **param_names;
             size_t param_count;
             bool is_variadic;

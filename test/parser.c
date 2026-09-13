@@ -321,13 +321,13 @@ DEFINE_TEST(test_postfix_chains)
 DEFINE_TEST(test_casts)
 {
     expect_expr("(char) x", "(cast (type char) x)");
-    expect_expr("(signed char) x", "(cast (type signed_char) x)");
-    expect_expr("(unsigned char) x", "(cast (type unsigned_char) x)");
+    expect_expr("(signed char) x", "(cast (type signed char) x)");
+    expect_expr("(unsigned char) x", "(cast (type unsigned char) x)");
     expect_expr("(int) x", "(cast (type int) x)");
     expect_expr("(long) x", "(cast (type long) x)");
     expect_expr("(void) x", "(cast (type void) x)");
-    expect_expr("(unsigned) x", "(cast (type unsigned_int) x)");
-    expect_expr("(int *) x", "(cast (ptr_type (type int)) x)");
+    expect_expr("(unsigned) x", "(cast (type unsigned int) x)");
+    expect_expr("(int *) x", "(cast (type int *) x)");
     expect_expr("(int) (char) x", "(cast (type int) (cast (type char) x))");
 }
 
@@ -346,7 +346,7 @@ DEFINE_TEST(test_cast_binding)
 DEFINE_TEST(test_sizeof)
 {
     expect_expr("sizeof(int)", "(sizeof_type (type int))");
-    expect_expr("sizeof(int *)", "(sizeof_type (ptr_type (type int)))");
+    expect_expr("sizeof(int *)", "(sizeof_type (type int *))");
     expect_expr("sizeof x", "(sizeof_value x)");
     expect_expr("sizeof a.b", "(sizeof_value (field b a))");
     expect_expr("sizeof -a", "(sizeof_value (unop - a))");
@@ -359,7 +359,7 @@ DEFINE_TEST(test_alignof)
     expect_expr("_Alignof(int)", "(alignof (type int))");
     expect_expr("alignof(int)", "(alignof (type int))");
     expect_expr("_Alignof(double)", "(alignof (type double))");
-    expect_expr("_Alignof(char *)", "(alignof (ptr_type (type char)))");
+    expect_expr("_Alignof(char *)", "(alignof (type char *))");
 }
 
 //
@@ -418,6 +418,8 @@ DEFINE_TEST(test_binop_assoc)
     expect_expr("a----", "(unop -- (post) (unop -- (post) a))");
 }
 
+//
+// Statement tests
 //
 // Empty statement
 //
@@ -525,6 +527,8 @@ DEFINE_TEST(test_return_statements)
 int main(void)
 {
     g_test_ctx.test_arena = arena_init();
+
+    // Expression tests
     RUN_TEST(test_literals);
     RUN_TEST(test_precedence_arithmetic);
     RUN_TEST(test_precedence_shift);
@@ -551,6 +555,8 @@ int main(void)
     RUN_TEST(test_alignof);
     RUN_TEST(test_parenthesized_expressions);
     RUN_TEST(test_binop_assoc);
+
+    // Statement tests
     RUN_TEST(test_empty_statement);
     RUN_TEST(test_block_statements);
     RUN_TEST(test_label_statements);

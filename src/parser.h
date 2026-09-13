@@ -24,7 +24,7 @@ typedef struct {
     uint8_t right;
 } BindPower;
 
-Type parse_type(Parser *p);
+Type *parse_type(Parser *p);
 Expr *parse_expr(Parser *p);
 Stmt *parse_stmt(Parser *p);
 TranslUnit parse_transl_unit(Parser *p);

@@ -25,7 +25,7 @@ struct Symbol {
     Namespace ns;
     Loc loc;
     const char *name;
-    Type ty;
+    Type *ty;
     uint32_t depth;
 };
 

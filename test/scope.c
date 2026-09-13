@@ -9,14 +9,15 @@ static Type primitive_type(TypeKind kind)
 }
 
 static Symbol *new_symbol(SymbolKind kind, Namespace ns, const char *name,
-                        Type ty)
+                          Type ty)
 {
     Symbol *sym = arena_alloc(&g_test_ctx.test_arena, Symbol);
+    sym->ty = arena_alloc(&g_test_ctx.test_arena, Type);
     sym->kind = kind;
     sym->ns = ns;
     sym->loc = (Loc) { .file_path = "<test>", .line = 0, .col = 0 };
     sym->name = name;
-    sym->ty = ty;
+    *sym->ty = ty;
     sym->depth = 0;
     return sym;
 }
@@ -76,18 +77,18 @@ DEFINE_TEST(test_shadowing_symbol)
     Symbol *found = scope_lookup_var(&sc, name);
     ASSERT(found != NULL, "expected variable `%s` to be visible in the inner scope",
            name);
-    EXPECT(found->ty.kind == TYPE_CHAR,
+    EXPECT(found->ty->kind == TYPE_CHAR,
            "expected inner variable `%s` of type `char` but got type `%s`", name,
-           type_to_str(found->ty));
+           TYPE_TO_STR(found->ty));
 
     scope_exit(&sc);
     found = scope_lookup_var(&sc, name);
     ASSERT(found != NULL,
            "expected variable `%s` to be visible again after exiting the inner scope",
            name);
-    EXPECT(found->ty.kind == TYPE_INT,
+    EXPECT(found->ty->kind == TYPE_INT,
            "expected outer variable `%s` of type `int` but got type `%s`", name,
-           type_to_str(found->ty));
+           TYPE_TO_STR(found->ty));
     scope_free(&sc);
 }
 
@@ -138,9 +139,9 @@ DEFINE_TEST(test_sibling_scopes)
     scope_add_sym(&sc, new_symbol(SYMBOL_VAR, NS_VAR, name, primitive_type(TYPE_CHAR)));
     Symbol *found = scope_lookup_var(&sc, name);
     ASSERT(found != NULL, "expected `%s` to be visible in the second scope", name);
-    EXPECT(found->ty.kind == TYPE_CHAR,
+    EXPECT(found->ty->kind == TYPE_CHAR,
            "expected the second declaration of `%s` with type `char` but got type `%s`",
-           name, type_to_str(found->ty));
+           name, TYPE_TO_STR(found->ty));
     scope_exit(&sc);
 
     EXPECT(sc.count == 0,
