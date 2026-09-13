@@ -102,12 +102,15 @@ static bool is_type(const Scope *sc, Token t)
     return false;
 }
 
+// Returns `true` if the given Token `t` is a type qualifier.
 static bool is_type_qual(const Token t)
 {
     if (t.kind != TK_KW) return false;
     return token_equal(t, "const") || token_equal(t, "volatile") || token_equal(t, "restrict");
 }
 
+// Parses a list of consecutive type qualifiers. Returns an bitmap specifying
+// the qualifiers present according to the `TypeQual` enum.
 static uint8_t parse_type_quals(Parser *p)
 {
     uint8_t quals = 0;
@@ -363,6 +366,7 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
     return spec;
 }
 
+// Parses a single declarator with base type `base`.
 static Type *parse_declarator(Parser *p, const Type *base)
 {
     Type *ty = arena_alloc(p->a, Type);
@@ -381,8 +385,6 @@ static Type *parse_declarator(Parser *p, const Type *base)
     return ty;
 }
 
-// TODO: implement types TYPE_ENUM, TYPE_FUNC, TYPE_ARRAY, TYPE_VLA,
-// TYPE_STRUCT, TYPE_UNION, TYPE_NAMED
 Type *parse_type(Parser *p)
 {
     if (parser_at_eof(p))
@@ -430,6 +432,7 @@ static Expr *new_assign_expr(Arena *a, Loc loc, AssignKind kind, Expr *var, Expr
     return e;
 }
 
+// Returns the BinopKind associated to a TokenKind `kind`.
 static BinopKind get_binop_kind(TokenKind kind)
 {
     static_assert(BINOP_COUNT == 19, "get_binop_kind: `BINOP_COUNT` value has changed");
@@ -458,6 +461,7 @@ static BinopKind get_binop_kind(TokenKind kind)
     }
 }
 
+// Returns the AssignKind associated to a TokenKind `kind`.
 static AssignKind get_assign_kind(TokenKind kind)
 {
     static_assert(ASSIGN_COUNT == 11, "get_assign_kind: `ASSIGN_COUNT` value has changed");
@@ -478,6 +482,7 @@ static AssignKind get_assign_kind(TokenKind kind)
     }
 }
 
+// Returns whether the TokenKind `kind` corresponds to an assignment operation.
 static bool is_assign_op(TokenKind kind)
 {
     switch (kind) {
@@ -853,6 +858,7 @@ inline Expr *parse_expr(Parser *p)
 // Statement parser
 //
 
+// Parses a block statement. The closing `}` is consumed by the function.
 static Stmt *parse_block_stmts(Parser *p)
 {
     Stmt *s = arena_alloc(p->a, Stmt);
