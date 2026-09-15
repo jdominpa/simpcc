@@ -128,6 +128,8 @@ static uint8_t parse_type_quals(Parser *p)
     return quals;
 }
 
+// Temporary struct to hold the declaration-specifiers. Only used transitively
+// to store the information.
 typedef struct {
     Loc loc;
     StorageClass storage;
@@ -366,9 +368,21 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
     return spec;
 }
 
+typedef struct {
+    Type *ty;
+    const char *name;
+    Loc name_loc;
+} Declarator;
+
+typedef enum {
+    DECLARATOR_NAMED,
+    DECLARATOR_ABSTRACT,
+} DeclaratorMode;
+
 // Parses a single declarator with base type `base`.
-static Type *parse_declarator(Parser *p, const Type *base)
+static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode)
 {
+    Declarator decl = { 0 };
     Type *ty = arena_alloc(p->a, Type);
     *ty = *base;
 
@@ -382,7 +396,20 @@ static Type *parse_declarator(Parser *p, const Type *base)
         ty->quals |= parse_type_quals(p);
     }
 
-    return ty;
+    decl.ty = ty;
+    switch (mode) {
+    case DECLARATOR_NAMED: {
+        if (!parser_check(p, TK_IDENT))
+            UNREACHABLE("parser_expect is currently nonreturnable");
+        Token name = parser_prev(p);
+        decl.name = arena_strndup(p->a, name.start, name.len);
+        decl.name_loc = name.loc;
+        break;
+    }
+    case DECLARATOR_ABSTRACT:
+        break;
+    }
+    return decl;
 }
 
 Type *parse_type(Parser *p)
@@ -393,7 +420,7 @@ Type *parse_type(Parser *p)
                       token_kind_to_str[TK_EOF]);
 
     DeclSpec spec = parse_decl_spec(p, false);
-    return parse_declarator(p, spec.base);
+    return parse_declarator(p, spec.base, DECLARATOR_ABSTRACT).ty;
 }
 
 //
