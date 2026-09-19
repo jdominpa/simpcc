@@ -168,7 +168,7 @@ static void base_type_to_str(char *buf, size_t size, const Type *ty)
 // and `int (*const)[5]` do not.
 static inline bool quals_need_space(const char *decl)
 {
-    return decl[0] == '*' || decl[0] == '_' || isalpha(decl[0]);
+    return decl[0] != '\0' && decl[0] != '(' && decl[0] != '[';
 }
 
 // Builds the C spelling of `ty` by wrapping `decl`, the declarator text
@@ -236,13 +236,13 @@ typedef struct {
     bool print_locs;
 } PrintCtx;
 
-static inline void print_loc(PrintCtx *ctx, Loc loc)
+static inline void print_loc(const PrintCtx *ctx, Loc loc)
 {
     if (ctx->print_locs)
         fprintf(ctx->out, " <%zu:%zu>", loc.line, loc.col);
 }
 
-static void print_type_quals_field(PrintCtx *ctx, const uint8_t quals)
+static void print_type_quals_field(const PrintCtx *ctx, const uint8_t quals)
 {
     if (quals == 0) return;
     char buf[QUALS_STR_CAP];

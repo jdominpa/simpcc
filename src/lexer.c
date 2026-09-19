@@ -1,6 +1,5 @@
 #include "lexer.h"
 
-#include <ctype.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -9,7 +8,7 @@
 #include "diag.h"
 #include "io.h"
 
-static Loc lexer_get_loc(Lexer *l)
+static Loc lexer_get_loc(const Lexer *l)
 {
     return (Loc) {
         .file_path = l->file_path,
@@ -37,17 +36,17 @@ static bool lexer_bump_bytes(Lexer *l, size_t n)
     return true;
 }
 
-static inline char lexer_peek_first(Lexer *l)
+static inline char lexer_peek_first(const Lexer *l)
 {
     return l->pos + 1 < l->size ? l->src[l->pos + 1] : '\0';
 }
 
-static inline char lexer_peek_second(Lexer *l)
+static inline char lexer_peek_second(const Lexer *l)
 {
     return l->pos + 2 < l->size ? l->src[l->pos + 2] : '\0';
 }
 
-static bool lexer_starts_with(Lexer *l, const char *prefix)
+static bool lexer_starts_with(const Lexer *l, const char *prefix)
 {
     size_t len = strlen(prefix);
     if (l->pos + len <= l->size) {
@@ -59,14 +58,25 @@ static bool lexer_starts_with(Lexer *l, const char *prefix)
     return false;
 }
 
+static inline bool is_space(char c)
+{
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
+           c == '\f';
+}
+
+static inline bool is_digit(char c)
+{
+    return c >= '0' && c <= '9';
+}
+
 static inline bool is_ident_start(char c)
 {
-    return isalpha(c) || c == '_';
+    return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
 static inline bool is_ident_cont(char c)
 {
-    return isalnum(c) || c == '_';
+    return is_ident_start(c) || is_digit(c);
 }
 
 static bool is_keyword(const char *symbol, size_t len)
@@ -187,7 +197,7 @@ NumericLiteral token_numeric_value(Token t)
             return num;
         }
         unsigned digit = (unsigned) (c - '0');
-        if (num.i * 10 + digit > ULLONG_MAX) {
+        if (num.i > (ULLONG_MAX - digit) / 10) {
             num.overflow = true;
             return num;
         }
@@ -203,7 +213,7 @@ Token lexer_next_token(Lexer *l)
 
     // Skip whitespace and comments
     for (;;) {
-        while (l->pos < l->size && isspace(l->src[l->pos]))
+        while (l->pos < l->size && is_space(l->src[l->pos]))
             lexer_bump(l);
         if (l->pos < l->size && l->src[l->pos] == '/') {
             switch (lexer_peek_first(l)) {
@@ -292,10 +302,10 @@ Token lexer_next_token(Lexer *l)
     }
 
     // Number
-    if (isdigit(l->src[l->pos])) {
+    if (is_digit(l->src[l->pos])) {
         t.kind = TK_NUM;
         // TODO: handle non-integer numbers
-        while (l->pos < l->size && isdigit(l->src[l->pos])) {
+        while (l->pos < l->size && is_digit(l->src[l->pos])) {
             t.len++;
             lexer_bump(l);
         }

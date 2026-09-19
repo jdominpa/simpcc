@@ -127,6 +127,9 @@ DEFINE_TEST(test_arith_types)
     expect_type("unsigned", "(type unsigned int)");
     expect_type("int *", "(type int *)");
     expect_type("int **", "(type int **)");
+    expect_type("int[3][4]", "(type int[3][4])");
+    expect_type("int[]", "(type int[])");
+    expect_type("int *[3]", "(type int *[3])");
 }
 
 DEFINE_TEST(test_qualified_types)

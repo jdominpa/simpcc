@@ -15,7 +15,7 @@
 #include "scope.h"
 
 // Returns the current token without consuming it.
-static inline Token parser_peek(Parser *p)
+static inline Token parser_peek(const Parser *p)
 {
     assert(p->pos < p->token_count);
     return p->tokens[p->pos];
@@ -23,20 +23,20 @@ static inline Token parser_peek(Parser *p)
 
 // Returns the most recently consumed token. Panics if called without having
 // consumed at least one token.
-static inline Token parser_prev(Parser *p)
+static inline Token parser_prev(const Parser *p)
 {
     assert(p->pos > 0 && p->pos <= p->token_count);
     return p->tokens[p->pos - 1];
 }
 
 // Checks if the current token is of TokenKind `kind`, and returns `true` if so.
-static inline bool parser_check(Parser *p, TokenKind kind)
+static inline bool parser_check(const Parser *p, TokenKind kind)
 {
     return parser_peek(p).kind == kind;
 }
 
 // Returns whether the parser is at EOF or not.
-static inline bool parser_at_eof(Parser *p)
+static inline bool parser_at_eof(const Parser *p)
 {
     return parser_check(p, TK_EOF);
 }
@@ -103,7 +103,7 @@ static bool is_type(const Scope *sc, Token t)
 }
 
 // Returns `true` if the given Token `t` is a type qualifier.
-static bool is_type_qual(const Token t)
+static bool is_type_qual(Token t)
 {
     if (t.kind != TK_KW) return false;
     return token_equal(t, "const") || token_equal(t, "volatile") || token_equal(t, "restrict");
@@ -386,9 +386,9 @@ typedef enum {
 
 // Parses the [...] array suffixes of a declarator. Must be called at the
 // opening `[`.
-static Type *parse_declarator_array_suffix(Parser *p, const Type *base)
+static Type *parse_declarator_array_suffix(Parser *p, Type *base)
 {
-    if (!parser_eat(p, TK_OBRACK)) return (Type *) base;
+    if (!parser_eat(p, TK_OBRACK)) return base;
 
     Type *array = arena_alloc(p->a, Type);
     *array = (Type) { .kind = TYPE_ARRAY, .loc = parser_prev(p).loc };

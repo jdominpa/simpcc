@@ -6,7 +6,6 @@
 #include "common.h"
 #include "lexer.h"
 #include "parser.h"
-#include "scope.h"
 
 typedef struct {
     const char **items;

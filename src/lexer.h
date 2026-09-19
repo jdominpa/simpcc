@@ -112,7 +112,8 @@ typedef struct {
     bool overflow;
     union {
         unsigned long long i;
-        float f;
+        // C's default type for floating point constants is `double`
+        double f;
     };
 } NumericLiteral;
 
