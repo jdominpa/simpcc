@@ -57,7 +57,9 @@ struct Type {
         } ptr;
         struct {
             Type *base;
+            bool has_size;
             size_t size;
+            Loc size_loc;
         } array;
         struct {
             const char *name;

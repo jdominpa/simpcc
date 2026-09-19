@@ -1,6 +1,7 @@
 #include "lexer.h"
 
 #include <ctype.h>
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -164,6 +165,36 @@ const char *token_to_str(Token t)
                  token_kind_to_str[t.kind]);
         return buf;
     }
+}
+
+// Converts a token of kind `TK_NUM` into its value.
+NumericLiteral token_numeric_value(Token t)
+{
+    NumericLiteral num = { .kind = NUMLIT_INT, .valid = true, };
+    if (t.kind != TK_NUM || t.len == 0) {
+        num.valid = false;
+        return num;
+    }
+
+    // TODO: we only parse decimal integers at the moment. Hexadecimal, octal,
+    // binary, integer suffixes (`u`, `l`, `ll`), floating constants and the
+    // type each spelling implies (C11 6.4.4.1) all belong here.
+    num.kind = NUMLIT_INT;
+    for (size_t i = 0; i < t.len; ++i) {
+        unsigned char c = t.start[i];
+        if (c < '0' || c > '9') {
+            num.valid = false;
+            return num;
+        }
+        unsigned digit = (unsigned) (c - '0');
+        if (num.i * 10 + digit > ULLONG_MAX) {
+            num.overflow = true;
+            return num;
+        }
+        num.i = num.i * 10 + digit;
+    }
+
+    return num;
 }
 
 Token lexer_next_token(Lexer *l)

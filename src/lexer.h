@@ -101,7 +101,23 @@ typedef struct {
 
 extern const char *const token_kind_to_str[TK_COUNT];
 
+typedef enum {
+    NUMLIT_INT,
+    NUMLIT_FLOAT,
+} NumericLiteralKind;
+
+typedef struct {
+    NumericLiteralKind kind;
+    bool valid;
+    bool overflow;
+    union {
+        unsigned long long i;
+        float f;
+    };
+} NumericLiteral;
+
 const char *token_to_str(Token t);
+NumericLiteral token_numeric_value(Token t);
 Token lexer_next_token(Lexer *l);
 Lexer lexer_init_from_src(const char *source);
 Lexer lexer_init_from_file_path(Arena *a, const char *path);

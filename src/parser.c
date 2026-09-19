@@ -68,8 +68,8 @@ static bool parser_expect(Parser *p, TokenKind kind)
     } else {
         Token t = parser_peek(p);
         // TODO: try to recover from unexpected tokens instead of crashing
-        diag_fatal_at(t.loc, "unexpected token, expected %s but found %s",
-                      token_to_str(t), token_to_str(t));
+        diag_fatal_at(t.loc, "unexpected token, expected `%s` but found %s",
+                      token_kind_to_str[kind], token_to_str(t));
     }
 }
 
@@ -368,16 +368,64 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
     return spec;
 }
 
+// Result of parsing a declarator: the type it builds around the base type it
+// was given, plus the identifier it declares. `name` is NULL for an abstract
+// declarator.
 typedef struct {
     Type *ty;
     const char *name;
     Loc name_loc;
 } Declarator;
 
+// Whether a declarator declares an identifier. C's grammar has both declarator
+// and abstract-declarator and they differ only in the name.
 typedef enum {
     DECLARATOR_NAMED,
     DECLARATOR_ABSTRACT,
 } DeclaratorMode;
+
+// Parses the [...] array suffixes of a declarator. Must be called at the
+// opening `[`.
+static Type *parse_declarator_array_suffix(Parser *p, const Type *base)
+{
+    if (!parser_eat(p, TK_OBRACK)) return (Type *) base;
+
+    Type *array = arena_alloc(p->a, Type);
+    *array = (Type) { .kind = TYPE_ARRAY, .loc = parser_prev(p).loc };
+
+    // TODO: array size can be any constant expression, but we only accept
+    // integer literals currently. `[*]`, `[static n]` and qualifiers are only
+    // legal in parameter lists and are not handled either.
+    if (parser_eat(p, TK_CBRACK)) {
+        array->array.has_size = false;
+        array->array.size_loc = parser_prev(p).loc;
+    } else if (parser_eat(p, TK_NUM)) {
+        Token num = parser_prev(p);
+
+        NumericLiteral size = token_numeric_value(num);
+        if (!size.valid)
+            diag_fatal_at(num.loc,
+                          "invalid array size `%.*s`", (int) num.len, num.start);
+        if (size.overflow)
+            diag_fatal_at(num.loc,
+                          "array size `%.*s` is too large", (int) num.len, num.start);
+        if (size.kind != NUMLIT_INT)
+            diag_fatal_at(num.loc,
+                          "array size `%.*s` must be an integer", (int) num.len, num.start);
+
+        array->array.has_size = true;
+        array->array.size_loc = num.loc;
+        array->array.size = size.i;
+        if (!parser_expect(p, TK_CBRACK))
+            UNREACHABLE("parser_expect is currently nonreturnable");
+    } else {
+        diag_fatal_at(parser_peek(p).loc,
+                      "incorrect array size found while parsing array declaration");
+    }
+
+    array->array.base = parse_declarator_array_suffix(p, base);
+    return array;
+}
 
 // Parses a single declarator with base type `base`.
 static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode)
@@ -386,6 +434,7 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
     Type *ty = arena_alloc(p->a, Type);
     *ty = *base;
 
+    // Pointer stars
     while (parser_check(p, TK_STAR)) {
         Type *inner = arena_alloc(p->a, Type);
         *inner = *ty;
@@ -395,11 +444,12 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
         parser_bump(p);
         ty->quals |= parse_type_quals(p);
     }
+    decl.ty = ty;  // base type of declarator
 
-    decl.ty = ty;
+    // Declarator name
     switch (mode) {
     case DECLARATOR_NAMED: {
-        if (!parser_check(p, TK_IDENT))
+        if (!parser_expect(p, TK_IDENT))
             UNREACHABLE("parser_expect is currently nonreturnable");
         Token name = parser_prev(p);
         decl.name = arena_strndup(p->a, name.start, name.len);
@@ -409,6 +459,11 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
     case DECLARATOR_ABSTRACT:
         break;
     }
+
+    // Array declaration
+    if (parser_check(p, TK_OBRACK))
+        decl.ty = parse_declarator_array_suffix(p, decl.ty);
+
     return decl;
 }
 
@@ -694,9 +749,17 @@ static Expr *parse_expr_head(Parser *p)
         Expr *e = arena_alloc(p->a, Expr);
         e->kind = EXPR_NUM;
         e->loc = t.loc;
-        e->val = 0;
-        for (size_t i = 0; i < t.len; ++i)
-            e->val = e->val * 10 + (t.start[i] - '0');
+
+        NumericLiteral val = token_numeric_value(t);
+        if (!val.valid)
+            diag_fatal_at(t.loc,
+                          "invalid numeric literal `%.*s`", (int) t.len, t.start);
+        if (val.overflow)
+            diag_fatal_at(t.loc,
+                          "numeric literal `%.*s` is too large", (int) t.len, t.start);
+
+        // TODO: `Expr.val` is an int. It should carry the literal's own type.
+        e->val = (int) val.i;
         return e;
     }
     case TK_OPAREN:

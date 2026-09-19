@@ -198,7 +198,10 @@ static void type_to_str_rec(char *buf, size_t size, const Type *ty,
     }
     case TYPE_ARRAY: {
         char inner[TYPE_STR_CAP];
-        snprintf(inner, sizeof inner, "%s[%zu]", decl, ty->array.size);
+        if (ty->array.has_size)
+            snprintf(inner, sizeof inner, "%s[%zu]", decl, ty->array.size);
+        else
+            snprintf(inner, sizeof inner, "%s[]", decl);
         type_to_str_rec(buf, size, ty->array.base, inner);
         return;
     }
@@ -209,7 +212,8 @@ static void type_to_str_rec(char *buf, size_t size, const Type *ty,
     default: {
         char base[TYPE_STR_CAP];
         base_type_to_str(base, sizeof base, ty);
-        snprintf(buf, size, "%s%s%s", base, decl[0] != '\0' ? " " : "", decl);
+        bool space = decl[0] != '\0' && decl[0] != '[';
+        snprintf(buf, size, "%s%s%s", base, space ? " " : "", decl);
         return;
     }
     }
@@ -330,7 +334,10 @@ static void print_type_ctx(PrintCtx *ctx, const Type *ty)
     case TYPE_FUNC:
         TODO("print_type_ctx: implement `TYPE_FUNC`");
     case TYPE_ARRAY:
-        fprintf(ctx->out, "(array_type[%zu]", ty->array.size);
+        if (ty->array.has_size)
+            fprintf(ctx->out, "(array_type[%zu]", ty->array.size);
+        else
+            fprintf(ctx->out, "(array_type[]");
         print_loc(ctx, ty->loc);
         print_type_quals_field(ctx, ty->quals);
         print_type_field(ctx, "base", ty->array.base);
