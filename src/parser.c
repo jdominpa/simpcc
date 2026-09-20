@@ -384,12 +384,12 @@ typedef enum {
     DECLARATOR_ABSTRACT,
 } DeclaratorMode;
 
-// Parses the [...] array suffixes of a declarator. Must be called at the
-// opening `[`.
+static Type *parse_declarator_suffix(Parser *p, Type *base);
+
+// Parses the [...] array suffixes of a declarator. Must be called after
+// consuming the opening `[`.
 static Type *parse_declarator_array_suffix(Parser *p, Type *base)
 {
-    if (!parser_eat(p, TK_OBRACK)) return base;
-
     Type *array = arena_alloc(p->a, Type);
     *array = (Type) { .kind = TYPE_ARRAY, .loc = parser_prev(p).loc };
 
@@ -423,8 +423,20 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
                       "incorrect array size found while parsing array declaration");
     }
 
-    array->array.base = parse_declarator_array_suffix(p, base);
+    Type *elem = parse_declarator_suffix(p, base);
+    if (elem->kind == TYPE_FUNC)
+        diag_fatal_at(array->loc,
+                      "array cannot have a function type as its element type");
+    array->array.base = elem;
     return array;
+}
+
+// Parses the suffix after a declarator.
+static Type *parse_declarator_suffix(Parser *p, Type *base)
+{
+    if (parser_eat(p, TK_OBRACK)) return parse_declarator_array_suffix(p, base);
+    // if (parser_eat(p, TK_OPAREN)) return parse_declarator_func_suffix(p, base);
+    return base;
 }
 
 // Parses a single declarator with base type `base`.
@@ -460,10 +472,7 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
         break;
     }
 
-    // Array declaration
-    if (parser_check(p, TK_OBRACK))
-        decl.ty = parse_declarator_array_suffix(p, decl.ty);
-
+    decl.ty = parse_declarator_suffix(p, decl.ty);
     return decl;
 }
 
