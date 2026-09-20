@@ -10,6 +10,9 @@
 #define CHUNK_MIN_SIZE (4 * 1024)        /* 4 KB */
 #define CHUNK_MAX_SIZE (2 * 1024 * 1024) /* 2 MB */
 
+// Creates a new chunk. Its size is `Arena.next_chunk_size` unless the needed
+// `size` exceeds that value. Moreover, the size is capped at `CHUNK_MAX_SIZE`
+// and can't be lower than `CHUNK_MIN_SIZE`.
 static Chunk *arena_new_chunk(Arena *a, size_t size)
 {
     Chunk *c = (Chunk *) malloc(sizeof(Chunk));
@@ -34,7 +37,7 @@ static Chunk *arena_new_chunk(Arena *a, size_t size)
     return c;
 }
 
-/* Initialize the arena `a` with a single chunk of size CHUNK_MIN_SIZE */
+// Initialize the arena `a` with a single chunk of size CHUNK_MIN_SIZE.
 Arena arena_init(void)
 {
     Arena a;
@@ -43,8 +46,8 @@ Arena arena_init(void)
     return a;
 }
 
-/* Allocate `size` bytes on the arena `a` with alignment `align` and return a
-   pointer to the start of the allocated bytes */
+// Allocate `size` bytes on the arena `a` with alignment `align` and return a
+// pointer to the start of the allocated bytes.
 void *arena_alloc_aligned(Arena *a, size_t size, size_t align)
 {
     if (a == NULL || a->current == NULL) {
@@ -65,6 +68,8 @@ void *arena_alloc_aligned(Arena *a, size_t size, size_t align)
     return ptr;
 }
 
+// Copies a given string `str` of length `len` (not necessarily null terminated)
+// to the arena and returns a pointer to the arena copy.
 const char *arena_strndup(Arena *a, const char *str, size_t len)
 {
     char *copy = arena_alloc_many(a, char, len + 1);
@@ -73,19 +78,22 @@ const char *arena_strndup(Arena *a, const char *str, size_t len)
     return copy;
 }
 
+// Copies a null terminated string `str` to the arena and returns a pointer to
+// the arena copy.
 const char *arena_strdup(Arena *a, const char *str)
 {
     return arena_strndup(a, str, strlen(str));
 }
 
+// Frees the given chunk `c`.
 static void arena_free_chunk(Chunk *c)
 {
     free(c->start);
     free(c);
 }
 
-/* Reset the arena `a` by freeing all chunks except the current one, setting the
-   offset to 0 and resetting the chunk size to CHUNK_SIZE_MIN */
+// Reset the arena `a` by freeing all chunks except the current one, setting the
+// offset to 0 and resetting the chunk size to CHUNK_SIZE_MIN.
 void arena_reset(Arena *a)
 {
     if (a == NULL || a->current == NULL) {
@@ -103,7 +111,7 @@ void arena_reset(Arena *a)
     a->next_chunk_size = CHUNK_MIN_SIZE;
 }
 
-/* Free all chunks of `a` and set `a->current` to NULL */
+// Free all chunks of the arena `a` and set `a->current` to NULL.
 void arena_free(Arena *a)
 {
     if (a == NULL || a->current == NULL) {
