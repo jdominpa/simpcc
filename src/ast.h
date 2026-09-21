@@ -133,7 +133,7 @@ typedef enum {
     EXPR_UNOP,      // -x, ~x, !x, *x, &x, ++x, x++, --x, x--
     EXPR_BINOP,     // +, -, *, /, %, etc.
     EXPR_TERNOP,    // expr "?" expr ":" expr
-    EXPR_FN_CALL,   // name "(" args ")"
+    EXPR_FUNC_CALL, // name "(" args ")"
     EXPR_ASSIGN,    // Type name "=" expr
     EXPR_INDEX,     // name "[" expr "]"
     EXPR_FIELD,     // name "." name
@@ -178,7 +178,7 @@ struct Expr {
             Expr *callee;
             size_t argc;
             Expr **args;
-        } fn_call;
+        } func_call;
         struct {
             AssignKind kind;
             Expr *var;

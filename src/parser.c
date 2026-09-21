@@ -651,7 +651,7 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
 // Parses and returns the arguments in a function call while storing the
 // argument count in `argc`. Must be called after consuming the open paren of
 // the function call. After returning, the parser will be at the closing paren.
-static Expr **parse_fn_call_args(Parser *p, size_t *argc)
+static Expr **parse_func_call_args(Parser *p, size_t *argc)
 {
     // Location of the '(' already consumed by the caller, used for diagnostics
     Loc open_loc = parser_prev(p).loc;
@@ -897,10 +897,10 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
         if (parser_eat(p, TK_OPAREN)) {
             Expr *callee = e;
             e = arena_alloc(p->a, Expr);
-            e->kind = EXPR_FN_CALL;
+            e->kind = EXPR_FUNC_CALL;
             e->loc = callee->loc;
-            e->fn_call.callee = callee;
-            e->fn_call.args = parse_fn_call_args(p, &e->fn_call.argc);
+            e->func_call.callee = callee;
+            e->func_call.args = parse_func_call_args(p, &e->func_call.argc);
             continue;
         }
 
