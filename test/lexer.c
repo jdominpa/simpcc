@@ -326,7 +326,7 @@ DEFINE_TEST(test_adjacent_strings)
 
 DEFINE_TEST(test_single_char_adjecent_punctuators)
 {
-    Lexer l = lexer_init_from_src("(){}[];:,.?~");
+    Lexer l = lexer_init_from_src("(){}[];:.,...?~");
     check_next_token(&l, TK_OPAREN, "(");
     check_next_token(&l, TK_CPAREN, ")");
     check_next_token(&l, TK_OBRACE, "{");
@@ -335,8 +335,9 @@ DEFINE_TEST(test_single_char_adjecent_punctuators)
     check_next_token(&l, TK_CBRACK, "]");
     check_next_token(&l, TK_SEMI, ";");
     check_next_token(&l, TK_COLON, ":");
-    check_next_token(&l, TK_COMMA, ",");
     check_next_token(&l, TK_DOT, ".");
+    check_next_token(&l, TK_COMMA, ",");
+    check_next_token(&l, TK_ELLIPSIS, "...");
     check_next_token(&l, TK_QUESTION, "?");
     check_next_token(&l, TK_TILDE, "~");
     check_next_token(&l, TK_EOF, NULL);
@@ -348,29 +349,29 @@ DEFINE_TEST(test_every_punctuator_in_isolation)
         const char *src;
         TokenKind kind;
     } punctuators[] = {
-        { "(", TK_OPAREN },       { ")", TK_CPAREN },
-        { "{", TK_OBRACE },       { "}", TK_CBRACE },
-        { "[", TK_OBRACK },       { "]", TK_CBRACK },
-        { ";", TK_SEMI },         { ":", TK_COLON },
-        { ".", TK_DOT },          { ",", TK_COMMA },
-        { "?", TK_QUESTION },     { "~", TK_TILDE },
-        { "+", TK_PLUS },         { "++", TK_PLUS_PLUS },
-        { "+=", TK_PLUS_EQ },     { "-", TK_MINUS },
-        { "--", TK_MINUS_MINUS }, { "-=", TK_MINUS_EQ },
-        { "->", TK_MINUS_GT },    { "*", TK_STAR },
-        { "*=", TK_STAR_EQ },     { "/", TK_SLASH },
-        { "/=", TK_SLASH_EQ },    { "%", TK_PERCENT },
-        { "%=", TK_PERCENT_EQ },  { "&", TK_AMP },
-        { "&&", TK_AMP_AMP },     { "&=", TK_AMP_EQ },
-        { "|", TK_PIPE },         { "||", TK_PIPE_PIPE },
-        { "|=", TK_PIPE_EQ },     { "^", TK_CARET },
-        { "^=", TK_CARET_EQ },    { "!", TK_BANG },
-        { "!=", TK_BANG_EQ },     { "=", TK_EQ },
-        { "==", TK_EQ_EQ },       { "<", TK_LT },
-        { "<=", TK_LT_EQ },       { "<<", TK_LT_LT },
-        { "<<=", TK_LT_LT_EQ },   { ">", TK_GT },
-        { ">=", TK_GT_EQ },       { ">>", TK_GT_GT },
-        { ">>=", TK_GT_GT_EQ },
+        { "(", TK_OPAREN },     { ")", TK_CPAREN },
+        { "{", TK_OBRACE },     { "}", TK_CBRACE },
+        { "[", TK_OBRACK },     { "]", TK_CBRACK },
+        { ";", TK_SEMI },       { ":", TK_COLON },
+        { ".", TK_DOT },        { ",", TK_COMMA },
+        { "...", TK_ELLIPSIS }, { "?", TK_QUESTION },
+        { "~", TK_TILDE },      { "+", TK_PLUS },
+        { "++", TK_PLUS_PLUS }, { "+=", TK_PLUS_EQ },
+        { "-", TK_MINUS },      { "--", TK_MINUS_MINUS },
+        { "-=", TK_MINUS_EQ },  { "->", TK_MINUS_GT },
+        { "*", TK_STAR },       { "*=", TK_STAR_EQ },
+        { "/", TK_SLASH },      { "/=", TK_SLASH_EQ },
+        { "%", TK_PERCENT },    { "%=", TK_PERCENT_EQ },
+        { "&", TK_AMP },        { "&&", TK_AMP_AMP },
+        { "&=", TK_AMP_EQ },    { "|", TK_PIPE },
+        { "||", TK_PIPE_PIPE }, { "|=", TK_PIPE_EQ },
+        { "^", TK_CARET },      { "^=", TK_CARET_EQ },
+        { "!", TK_BANG },       { "!=", TK_BANG_EQ },
+        { "=", TK_EQ },         { "==", TK_EQ_EQ },
+        { "<", TK_LT },         { "<=", TK_LT_EQ },
+        { "<<", TK_LT_LT },     { "<<=", TK_LT_LT_EQ },
+        { ">", TK_GT },         { ">=", TK_GT_EQ },
+        { ">>", TK_GT_GT },     { ">>=", TK_GT_GT_EQ },
     };
 
     for (size_t i = 0; i < sizeof(punctuators) / sizeof(*punctuators); ++i)
