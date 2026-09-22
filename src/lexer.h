@@ -29,6 +29,7 @@ typedef enum {
     TK_COLON,                   // :
     TK_DOT,                     // .
     TK_COMMA,                   // ,
+    TK_ELLIPSIS,                // ...
 
     // Arithmetic operators
     TK_PLUS,                    // +

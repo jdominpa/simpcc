@@ -1,5 +1,6 @@
 #include "lexer.h"
 
+#include <assert.h>
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -113,6 +114,7 @@ static bool is_keyword(const char *symbol, size_t len)
 }
 
 // Array of human-readable `TokenKind`.
+static_assert(TK_COUNT == 53, "token_kind_to_str: `TK_COUNT` value has changed");
 const char *const token_kind_to_str[TK_COUNT] = {
     [TK_INVALID] = "invalid",
     [TK_EOF] = "EOF",
@@ -131,6 +133,7 @@ const char *const token_kind_to_str[TK_COUNT] = {
     [TK_COLON] = ":",
     [TK_DOT] = ".",
     [TK_COMMA] = ",",
+    [TK_ELLIPSIS] = "...",
     [TK_PLUS] = "+",
     [TK_PLUS_PLUS] = "++",
     [TK_MINUS] = "-",
@@ -364,7 +367,10 @@ Token lexer_next_token(Lexer *l)
         MAKE_TOKEN(TK_COLON, 1);
         break;
     case '.':
-        MAKE_TOKEN(TK_DOT, 1);
+        if (first == '.' && second == '.')
+            MAKE_TOKEN(TK_ELLIPSIS, 3);
+        else
+            MAKE_TOKEN(TK_DOT, 1);
         break;
     case ',':
         MAKE_TOKEN(TK_COMMA, 1);
