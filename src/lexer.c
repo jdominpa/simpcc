@@ -8,6 +8,7 @@
 #include "diag.h"
 #include "io.h"
 
+// Returns the current location of the lexer `l`.
 static Loc lexer_get_loc(const Lexer *l)
 {
     return (Loc) {
@@ -17,6 +18,7 @@ static Loc lexer_get_loc(const Lexer *l)
     };
 }
 
+// Moves the lexer `l` by one character.
 static bool lexer_bump(Lexer *l)
 {
     if (l->pos >= l->size)
@@ -28,6 +30,7 @@ static bool lexer_bump(Lexer *l)
     return true;
 }
 
+// Moves the lexer `l` by `n` characters.
 static bool lexer_bump_bytes(Lexer *l, size_t n)
 {
     while (n--)
@@ -36,16 +39,20 @@ static bool lexer_bump_bytes(Lexer *l, size_t n)
     return true;
 }
 
+// Returns the next character after the current one.
 static inline char lexer_peek_first(const Lexer *l)
 {
     return l->pos + 1 < l->size ? l->src[l->pos + 1] : '\0';
 }
 
+// Returns the second next character after the current one.
 static inline char lexer_peek_second(const Lexer *l)
 {
     return l->pos + 2 < l->size ? l->src[l->pos + 2] : '\0';
 }
 
+// Returns `true` if the characters starting from the current one in the lexer
+// `l` coincide with `prefix`.
 static bool lexer_starts_with(const Lexer *l, const char *prefix)
 {
     size_t len = strlen(prefix);
@@ -58,27 +65,33 @@ static bool lexer_starts_with(const Lexer *l, const char *prefix)
     return false;
 }
 
+// Returns `true` if the character `c` is a space character.
 static inline bool is_space(char c)
 {
     return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\v' ||
            c == '\f';
 }
 
+// Returns `true` if the character `c` is a digit.
 static inline bool is_digit(char c)
 {
     return c >= '0' && c <= '9';
 }
 
+// Returns `true` if the character `c` is an underscore or an alpha character.
 static inline bool is_ident_start(char c)
 {
     return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
 }
 
+// Returns `true` if the character `c` is an underscore, a digit or an alpha
+// character.
 static inline bool is_ident_cont(char c)
 {
     return is_ident_start(c) || is_digit(c);
 }
 
+// Returns `true` if the `symbol` of length `len` is a C keyword.
 static bool is_keyword(const char *symbol, size_t len)
 {
     const char *keywords[] = {
@@ -207,6 +220,7 @@ NumericLiteral token_numeric_value(Token t)
     return num;
 }
 
+// Lexes and returns the next token at the current position of the lexer `l`.
 Token lexer_next_token(Lexer *l)
 {
     Token t = { 0 };
