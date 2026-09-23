@@ -145,6 +145,36 @@ DEFINE_TEST(test_qualified_types)
     expect_type("int *const", "(type int *const)");
 }
 
+DEFINE_TEST(test_function_types)
+{
+    expect_type("int()", "(type int(void))");
+    expect_type("int(void)", "(type int(void))");
+    expect_type("int(...)", "(type int(...))");
+    expect_type("int(int, ...)", "(type int(int, ...))");
+    expect_type("int(int, void *, const char **)",
+                "(type int(int, void *, const char **))");
+    expect_type("const char *(bool, char)", "(type const char *(bool, char))");
+    expect_type("void(void)", "(type void(void))");
+    expect_type("const int(void)", "(type const int(void))");
+    expect_type("int(int a, char b)", "(type int(int, char))");
+    expect_type("int(register int)", "(type int(int))");
+    expect_type("int(int *const)", "(type int(int *const))");
+    // More parameters than `DA_INIT_CAPACITY`, so the temporary list has to
+    // grow before it is copied into the arena.
+    expect_type("int(int, int, int, int, int)",
+                "(type int(int, int, int, int, int))");
+}
+
+DEFINE_TEST(test_function_parameters_decay)
+{
+    expect_type("int(int[3])", "(type int(int *))");
+    expect_type("int(int[])", "(type int(int *))");
+    expect_type("int(const int[3])", "(type int(const int *))");
+    expect_type("int(int *[3])", "(type int(int **))");
+    expect_type("int(int())", "(type int(int (*)(void)))");
+    expect_type("int(int(char))", "(type int(int (*)(char)))");
+}
+
 //
 // Expression tests
 //
@@ -586,8 +616,8 @@ DEFINE_TEST(test_return_statements)
 
 DEFINE_TEST(test_void_cast_fatal_paths)
 {
-    EXPECT_EXIT(1, { expect_type("signed void", ""); });
-    EXPECT_EXIT(1, { expect_type("unsigned void", ""); });
+    EXPECT_EXIT(1, { expect_type("signed void", NULL); });
+    EXPECT_EXIT(1, { expect_type("unsigned void", NULL); });
 }
 
 // A type name is a specifier-qualifier-list: it admits type specifiers and
@@ -595,24 +625,47 @@ DEFINE_TEST(test_void_cast_fatal_paths)
 // declaration allows.
 DEFINE_TEST(test_type_name_rejects_decl_specifiers)
 {
-    EXPECT_EXIT(1, { expect_type("typedef int", ""); });
-    EXPECT_EXIT(1, { expect_type("extern int", ""); });
-    EXPECT_EXIT(1, { expect_type("static int", ""); });
-    EXPECT_EXIT(1, { expect_type("auto int", ""); });
-    EXPECT_EXIT(1, { expect_type("register int", ""); });
-    EXPECT_EXIT(1, { expect_type("inline int", ""); });
-    EXPECT_EXIT(1, { expect_type("_Noreturn int", ""); });
-    EXPECT_EXIT(1, { expect_expr("sizeof(inline int)", ""); });
-    EXPECT_EXIT(1, { expect_expr("_Alignof(static int)", ""); });
+    EXPECT_EXIT(1, { expect_type("typedef int", NULL); });
+    EXPECT_EXIT(1, { expect_type("extern int", NULL); });
+    EXPECT_EXIT(1, { expect_type("static int", NULL); });
+    EXPECT_EXIT(1, { expect_type("auto int", NULL); });
+    EXPECT_EXIT(1, { expect_type("register int", NULL); });
+    EXPECT_EXIT(1, { expect_type("inline int", NULL); });
+    EXPECT_EXIT(1, { expect_type("_Noreturn int", NULL); });
+    EXPECT_EXIT(1, { expect_expr("sizeof(inline int)", NULL); });
+    EXPECT_EXIT(1, { expect_expr("_Alignof(static int)", NULL); });
 }
 
 DEFINE_TEST(test_missing_type_specifier_is_fatal)
 {
-    EXPECT_EXIT(1, { expect_type("const", ""); });
-    EXPECT_EXIT(1, { expect_type("volatile", ""); });
-    EXPECT_EXIT(1, { expect_type("const volatile", ""); });
-    EXPECT_EXIT(1, { expect_expr("sizeof(const)", ""); });
-    EXPECT_EXIT(1, { expect_expr("sizeof()", ""); });
+    EXPECT_EXIT(1, { expect_type("const", NULL); });
+    EXPECT_EXIT(1, { expect_type("volatile", NULL); });
+    EXPECT_EXIT(1, { expect_type("const volatile", NULL); });
+    EXPECT_EXIT(1, { expect_expr("sizeof(const)", NULL); });
+    EXPECT_EXIT(1, { expect_expr("sizeof()", NULL); });
+}
+
+DEFINE_TEST(test_function_types_fatal_paths)
+{
+    // `void` as a parameter
+    EXPECT_EXIT(1, { expect_type("int(void, int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(int, void)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(void x)", NULL); });
+    // Parameter list syntax
+    EXPECT_EXIT(1, { expect_type("int(..., int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(int,)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(int", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(int;)", NULL); });
+    // A parameter declaration takes `register` and nothing else
+    EXPECT_EXIT(1, { expect_type("int(static int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(typedef int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(extern int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(inline int)", NULL); });
+    EXPECT_EXIT(1, { expect_type("int(_Noreturn int)", NULL); });
+    // Mixing `[]` and `()` in one declarator is a constraint violation
+    EXPECT_EXIT(1, { expect_type("int[3]()", NULL); });
+    EXPECT_EXIT(1, { expect_type("int()[3]", NULL); });
+    EXPECT_EXIT(1, { expect_type("int()()", NULL); });
 }
 
 #endif  // _WIN32
@@ -624,6 +677,8 @@ int main(void)
     // Type tests
     RUN_TEST(test_arith_types);
     RUN_TEST(test_qualified_types);
+    RUN_TEST(test_function_types);
+    RUN_TEST(test_function_parameters_decay);
 
     // Expression tests
     RUN_TEST(test_literals);
@@ -669,6 +724,7 @@ int main(void)
     RUN_TEST(test_void_cast_fatal_paths);
     RUN_TEST(test_type_name_rejects_decl_specifiers);
     RUN_TEST(test_missing_type_specifier_is_fatal);
+    RUN_TEST(test_function_types_fatal_paths);
 #endif
 
     TEST_SUMMARY();
