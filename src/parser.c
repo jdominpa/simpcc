@@ -140,12 +140,18 @@ typedef struct {
     bool saw_arith;  // void/char/int/... present?
 } DeclSpec;
 
-// Parses a run of declaration specifiers. `allow_decl_specifiers` determines
-// the grammar the declspec belongs to: a declaration takes the full
-// declaration-specifiers, while a type-name (a cast, `sizeof`, `_Alignof`)
-// takes a specifier-qualifier-list, where storage classes and function
-// specifiers are a constraint violation.
-static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
+// Type of C declaration to be parsed. They share the type specifiers and
+// qualifiers and only differ in what else is permitted.
+typedef enum {
+    DECL_SPEC_DECLARATION,  // declaration-specifiers: everything allowed
+    DECL_SPEC_TYPE_NAME,    // specifier-qualifier-list: no storage class or
+                            // function specifiers
+    DECL_SPEC_PARAM,        // parameter-declaration: `register` and nothing else
+} DeclSpecMode;
+
+// Parses a run of declaration specifiers. The `mode` specifies which type of
+// specifiers are allowed in the declaration.
+static DeclSpec parse_decl_spec(Parser *p, DeclSpecMode mode)
 {
     DeclSpec spec = { 0 };
     spec.base = arena_alloc(p->a, Type);
@@ -174,10 +180,21 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
         // Storage class specifiers
         if (token_equal(t, "typedef") || token_equal(t, "extern") || token_equal(t, "static") ||
             token_equal(t, "auto") || token_equal(t, "register")) {
-            if (!allow_decl_specifiers)
+            switch (mode) {
+            case DECL_SPEC_DECLARATION:
+                break;
+            case DECL_SPEC_TYPE_NAME:
                 diag_fatal_at(t.loc,
                               "storage class specifier `%.*s` is not allowed in a type name",
                               (int) t.len, t.start);
+            case DECL_SPEC_PARAM:
+                if (!token_equal(t, "register"))
+                    diag_fatal_at(t.loc,
+                                  "storage class specifier `%.*s` is not allowed in a parameter declaration",
+                                  (int) t.len, t.start);
+                break;
+            }
+
             if (spec.storage != STORAGE_NONE)
                 // TODO: print the original and current specifiers
                 diag_fatal_at(t.loc, "multiple storage specifiers found in declaration");
@@ -199,10 +216,18 @@ static DeclSpec parse_decl_spec(Parser *p, bool allow_decl_specifiers)
 
         // Function specifiers
         if (token_equal(t, "inline") || token_equal(t, "_Noreturn")) {
-            if (!allow_decl_specifiers)
+            switch (mode) {
+            case DECL_SPEC_DECLARATION:
+                break;
+            case DECL_SPEC_TYPE_NAME:
                 diag_fatal_at(t.loc,
                               "function specifier `%.*s` is not allowed in a type name",
                               (int) t.len, t.start);
+            case DECL_SPEC_PARAM:
+                diag_fatal_at(t.loc,
+                              "function specifier `%.*s` is not allowed in a parameter declaration",
+                              (int) t.len, t.start);
+            }
 
             if (token_equal(t, "inline"))
                 spec.is_inline = true;
@@ -382,6 +407,7 @@ typedef struct {
 typedef enum {
     DECLARATOR_NAMED,
     DECLARATOR_ABSTRACT,
+    DECLARATOR_OPTIONAL,
 } DeclaratorMode;
 
 static Type *parse_declarator_suffix(Parser *p, Type *base);
@@ -431,18 +457,118 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
     return array;
 }
 
+static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode);
+
+static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
+{
+    Type *func = arena_alloc(p->a, Type);
+    *func = (Type) { .kind = TYPE_FUNC,
+                     .loc = parser_prev(p).loc,
+                     .func = { .ret = ret,
+                               .argc = 0,
+                               .args = NULL,
+                               .is_variadic = false } };
+
+    struct {
+        Type **items;
+        size_t count;
+        size_t capacity;
+    } args = { 0 };
+
+    while (!parser_at_eof(p) && !parser_check(p, TK_CPAREN)) {
+        // Variadic arguments
+        if (parser_eat(p, TK_ELLIPSIS)) {
+            func->func.is_variadic = true;
+            if (!parser_check(p, TK_CPAREN))
+                diag_fatal_at(parser_peek(p).loc,
+                              "`%s` must be the only/last parameter in a function declaration",
+                              token_kind_to_str[TK_ELLIPSIS]);
+            break;
+        }
+
+        DeclSpec spec = parse_decl_spec(p, DECL_SPEC_PARAM);
+        Declarator dec = parse_declarator(p, spec.base, DECLARATOR_OPTIONAL);
+
+        // `void` must be the only parameter in a function declaration and
+        // cannot be a named parameter.
+        if (dec.ty->kind == TYPE_VOID) {
+            if (args.count > 0 || parser_check(p, TK_COMMA)) {
+                diag_fatal_at(dec.ty->loc,
+                              "type %s must be the first and only parameter in a function declaration",
+                              TYPE_TO_STR(dec.ty));
+            } else if (dec.name != NULL) {
+                diag_fatal_at(dec.name_loc,
+                              "type %s cannot have named parameters in function declaration",
+                              TYPE_TO_STR(dec.ty));
+            }
+            break;
+        }
+
+        // A parameter of array type is adjusted to a pointer to its element
+        // type, and a parameter of function type to a pointer to the function.
+        Type *param = dec.ty;
+        if (param->kind == TYPE_ARRAY || param->kind == TYPE_FUNC) {
+            Type *ptr = arena_alloc(p->a, Type);
+            *ptr = (Type) {
+                .kind = TYPE_PTR,
+                .loc = param->loc,
+                // Qualifiers written inside the brackets belong to the pointer
+                // the parameter becomes, not to the element type.
+                .quals = param->quals,
+                .ptr.base = param->kind == TYPE_ARRAY ? param->array.base : param,
+            };
+            param = ptr;
+        }
+
+        da_append(&args, param,
+                  "could not allocate temporary memory to parse function declaration");
+        if (!parser_eat(p, TK_COMMA)) break;
+        if (parser_check(p, TK_CPAREN))
+            diag_fatal_at(parser_peek(p).loc,
+                          "trailing comma in function declaration parameter list");
+    }
+    if (!parser_eat(p, TK_CPAREN)) {
+        free(args.items);
+        // TODO: handle error instead of crashing
+        if (parser_at_eof(p))
+            diag_fatal_at(func->loc,
+                          "unclosed function declaration parameter list");
+        else
+            diag_fatal_at(parser_peek(p).loc,
+                          "expected `,` or `)` in function declaration parameter list, but found %s",
+                          token_to_str(parser_peek(p)));
+    }
+
+    if (args.count > 0) {
+        func->func.argc = args.count;
+        func->func.args = arena_alloc_many(p->a, Type *, args.count);
+        memcpy(func->func.args, args.items, args.count * sizeof(Type *));
+    }
+    free(args.items);
+
+    // Suffixes chain left to right with the leftmost outermost, so whatever
+    // follows the parameter list is what the function returns.
+    Type *ret_ty = parse_declarator_suffix(p, ret);
+    if (ret_ty->kind == TYPE_ARRAY)
+        diag_fatal_at(func->loc, "function cannot return an array type");
+    if (ret_ty->kind == TYPE_FUNC)
+        diag_fatal_at(func->loc, "function cannot return a function type");
+    func->func.ret = ret_ty;
+    return func;
+}
+
 // Parses the suffix after a declarator.
 static Type *parse_declarator_suffix(Parser *p, Type *base)
 {
     if (parser_eat(p, TK_OBRACK)) return parse_declarator_array_suffix(p, base);
-    // if (parser_eat(p, TK_OPAREN)) return parse_declarator_func_suffix(p, base);
+    if (parser_eat(p, TK_OPAREN)) return parse_declarator_func_suffix(p, base);
     return base;
 }
 
 // Parses a single declarator with base type `base`.
 static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode)
 {
-    Declarator decl = { 0 };
+    Declarator dec = { 0 };
     Type *ty = arena_alloc(p->a, Type);
     *ty = *base;
 
@@ -456,7 +582,7 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
         parser_bump(p);
         ty->quals |= parse_type_quals(p);
     }
-    decl.ty = ty;  // base type of declarator
+    dec.ty = ty;  // base type of declarator
 
     // Declarator name
     switch (mode) {
@@ -464,16 +590,23 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
         if (!parser_expect(p, TK_IDENT))
             UNREACHABLE("parser_expect is currently nonreturnable");
         Token name = parser_prev(p);
-        decl.name = arena_strndup(p->a, name.start, name.len);
-        decl.name_loc = name.loc;
+        dec.name = arena_strndup(p->a, name.start, name.len);
+        dec.name_loc = name.loc;
         break;
     }
     case DECLARATOR_ABSTRACT:
         break;
+    case DECLARATOR_OPTIONAL:
+        if (parser_eat(p, TK_IDENT)) {
+            Token name = parser_prev(p);
+            dec.name = arena_strndup(p->a, name.start, name.len);
+            dec.name_loc = name.loc;
+        }
+        break;
     }
 
-    decl.ty = parse_declarator_suffix(p, decl.ty);
-    return decl;
+    dec.ty = parse_declarator_suffix(p, dec.ty);
+    return dec;
 }
 
 Type *parse_type(Parser *p)
@@ -483,7 +616,7 @@ Type *parse_type(Parser *p)
                       "unexpected %s encountered while parsing type",
                       token_kind_to_str[TK_EOF]);
 
-    DeclSpec spec = parse_decl_spec(p, false);
+    DeclSpec spec = parse_decl_spec(p, DECL_SPEC_TYPE_NAME);
     return parse_declarator(p, spec.base, DECLARATOR_ABSTRACT).ty;
 }
 

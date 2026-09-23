@@ -24,8 +24,8 @@ typedef enum {
     TYPE_LDOUBLE,
     TYPE_ENUM,
     TYPE_PTR,
-    TYPE_FUNC,
     TYPE_ARRAY,
+    TYPE_FUNC,
     TYPE_VLA,     // variable length array
     TYPE_STRUCT,
     TYPE_UNION,
@@ -61,6 +61,12 @@ struct Type {
             size_t size;
             Loc size_loc;
         } array;
+        struct {
+            Type *ret;
+            size_t argc;
+            Type **args;
+            bool is_variadic;
+        } func;
         struct {
             const char *name;
             Type *ty;

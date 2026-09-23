@@ -1,7 +1,7 @@
 #include "ast_print.h"
 
 #include <assert.h>
-#include <ctype.h>
+#include <stdarg.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -9,6 +9,30 @@
 #include "common.h"
 
 #define INDENT_WIDTH 2
+
+// A write cursor over a fixed-capacity buffer. `len` is kept strictly below
+// `size`, so the buffer stays NUL-terminated and a build that runs out of room
+// stops growing instead of running past the end.
+typedef struct {
+    char *buf;
+    size_t size;
+    size_t used;
+} StrCursor;
+
+static void cursor_printf(StrCursor *c, const char *fmt, ...)
+    __attribute__((format(printf, 2, 3)));
+
+static void cursor_printf(StrCursor *c, const char *fmt, ...)
+{
+    if (c->used >= c->size) return;  // also covers size == 0
+    size_t avail = c->size - c->used;
+    va_list ap;
+    va_start(ap, fmt);
+    int n = vsnprintf(c->buf + c->used, avail, fmt, ap);
+    va_end(ap);
+    if (n < 0) return;
+    c->used += (size_t) n < avail ? (size_t) n : avail - 1;
+}
 
 static const char *unop_kind_to_str(UnopKind kind)
 {
@@ -207,12 +231,30 @@ static void type_to_str_rec(char *buf, size_t size, const Type *ty,
     }
     case TYPE_VLA:
         TODO("type_to_str_rec: implement `TYPE_VLA`");
-    case TYPE_FUNC:
-        TODO("type_to_str_rec: implement `TYPE_FUNC`");
+    case TYPE_FUNC: {
+        char args[TYPE_STR_CAP];
+        StrCursor c = { args, sizeof args, 0 };
+        cursor_printf(&c, "%s(", decl);
+        for (size_t i = 0; i < ty->func.argc; ++i)
+            cursor_printf(&c, "%s%s",
+                     i > 0 ? ", " : "", TYPE_TO_STR(ty->func.args[i]));
+        if (ty->func.is_variadic)
+            cursor_printf(&c, "%s...", ty->func.argc > 0 ? ", " : "");
+        else if (ty->func.argc == 0)
+            cursor_printf(&c, "void");
+        cursor_printf(&c, ")");
+        type_to_str_rec(buf, size, ty->func.ret, args);
+        return;
+    }
     default: {
         char base[TYPE_STR_CAP];
         base_type_to_str(base, sizeof base, ty);
-        bool space = decl[0] != '\0' && decl[0] != '[';
+        // A `(` opening a parameter list binds tight like `[`, whereas a `(`
+        // opening a parenthesised declarator binds like the `*` inside it and
+        // takes a space. `decl[1]` is always safe since `decl[0] == '('` means
+        // that, at least, `decl[1]` must be a closing `)`.
+        bool tight = decl[0] == '[' || (decl[0] == '(' && decl[1] != '*');
+        bool space = decl[0] != '\0' && !tight;
         snprintf(buf, size, "%s%s%s", base, space ? " " : "", decl);
         return;
     }
@@ -332,7 +374,25 @@ static void print_type_ctx(PrintCtx *ctx, const Type *ty)
         fprintf(ctx->out, ")");
         break;
     case TYPE_FUNC:
-        TODO("print_type_ctx: implement `TYPE_FUNC`");
+        fprintf(ctx->out, "(func_type");
+        print_loc(ctx, ty->loc);
+        print_type_field(ctx, "ret_type", ty->func.ret);
+        if (ty->func.argc == 0 && !ty->func.is_variadic) {
+            fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
+            fprintf(ctx->out, "args: void");
+        } else {
+            for (size_t i = 0; i < ty->func.argc; ++i) {
+                char arg_label[50];
+                sprintf(arg_label, "arg %zu", i);
+                print_type_field(ctx, arg_label, ty->func.args[i]);
+            }
+            if (ty->func.is_variadic) {
+                fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
+                fprintf(ctx->out, "...");
+            }
+        }
+        fprintf(ctx->out, ")");
+        break;
     case TYPE_ARRAY:
         if (ty->array.has_size)
             fprintf(ctx->out, "(array_type[%zu]", ty->array.size);
@@ -429,14 +489,14 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
         print_expr_field(ctx, "else", e->ternop._else);
         fprintf(ctx->out, ")");
         break;
-    case EXPR_FN_CALL:
+    case EXPR_FUNC_CALL:
         fprintf(ctx->out, "(fn_call");
         print_loc(ctx, e->loc);
-        print_expr_field(ctx, "callee", e->fn_call.callee);
-        for (size_t i = 0; i < e->fn_call.argc; ++i) {
+        print_expr_field(ctx, "callee", e->func_call.callee);
+        for (size_t i = 0; i < e->func_call.argc; ++i) {
             char arg_label[50];
             sprintf(arg_label, "arg %zu", i);
-            print_expr_field(ctx, arg_label, e->fn_call.args[i]);
+            print_expr_field(ctx, arg_label, e->func_call.args[i]);
         }
         fprintf(ctx->out, ")");
         break;
