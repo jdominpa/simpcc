@@ -461,13 +461,13 @@ static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode m
 
 static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
 {
+    scope_enter(&p->sc);
     Type *func = arena_alloc(p->a, Type);
-    *func = (Type) { .kind = TYPE_FUNC,
-                     .loc = parser_prev(p).loc,
-                     .func = { .ret = ret,
-                               .argc = 0,
-                               .args = NULL,
-                               .is_variadic = false } };
+    *func = (Type) {
+        .kind = TYPE_FUNC,
+        .loc = parser_prev(p).loc,
+        .func = { .ret = ret, .argc = 0, .args = NULL, .is_variadic = false }
+    };
 
     struct {
         Type **items;
@@ -520,6 +520,20 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
             param = ptr;
         }
 
+        // Add declarator name if present to the function's parameter list
+        // scope.
+        if (dec.name != NULL) {
+            Symbol *sym = arena_alloc(p->a, Symbol);
+            *sym = (Symbol) {
+                .kind = SYMBOL_VAR,
+                .ns = NS_VAR,
+                .loc = dec.name_loc,
+                .name = dec.name,
+                .ty = param,
+            };
+            scope_add_sym(&p->sc, sym);
+        }
+
         da_append(&args, param,
                   "could not allocate temporary memory to parse function declaration");
         if (!parser_eat(p, TK_COMMA)) break;
@@ -539,13 +553,15 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
                           token_to_str(parser_peek(p)));
     }
 
+    // Parameter list parsing finished; exit its scope.
+    scope_exit(&p->sc);
+
     if (args.count > 0) {
         func->func.argc = args.count;
         func->func.args = arena_alloc_many(p->a, Type *, args.count);
         memcpy(func->func.args, args.items, args.count * sizeof(Type *));
     }
     free(args.items);
-
     // Suffixes chain left to right with the leftmost outermost, so whatever
     // follows the parameter list is what the function returns.
     Type *ret_ty = parse_declarator_suffix(p, ret);

@@ -666,6 +666,8 @@ DEFINE_TEST(test_function_types_fatal_paths)
     EXPECT_EXIT(1, { expect_type("int[3]()", NULL); });
     EXPECT_EXIT(1, { expect_type("int()[3]", NULL); });
     EXPECT_EXIT(1, { expect_type("int()()", NULL); });
+    // Redefinition of function parameters
+    EXPECT_EXIT(1, { expect_type("int(int x, int x)", NULL); });
 }
 
 #endif  // _WIN32
