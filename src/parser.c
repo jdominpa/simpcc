@@ -159,16 +159,16 @@ static DeclSpec parse_decl_spec(Parser *p, DeclSpecMode mode)
     uint32_t counter = 0;
     uint8_t quals = 0;
     enum {
-        VOID     = 1 << 0,
-        BOOL     = 1 << 2,
-        CHAR     = 1 << 4,
-        SHORT    = 1 << 6,
-        INT      = 1 << 8,
-        LONG     = 1 << 10,
-        FLOAT    = 1 << 12,
-        DOUBLE   = 1 << 14,
-        OTHER    = 1 << 16,
-        SIGNED   = 1 << 17,
+        VOID = 1 << 0,
+        BOOL = 1 << 2,
+        CHAR = 1 << 4,
+        SHORT = 1 << 6,
+        INT = 1 << 8,
+        LONG = 1 << 10,
+        FLOAT = 1 << 12,
+        DOUBLE = 1 << 14,
+        OTHER = 1 << 16,
+        SIGNED = 1 << 17,
         UNSIGNED = 1 << 18,
     };
 
@@ -726,10 +726,16 @@ static AssignKind get_assign_kind(TokenKind kind)
 static bool is_assign_op(TokenKind kind)
 {
     switch (kind) {
-    case TK_AMP_EQ:   case TK_CARET_EQ: case TK_PIPE_EQ:
-    case TK_LT_LT_EQ: case TK_GT_GT_EQ:
-    case TK_STAR_EQ:  case TK_SLASH_EQ: case TK_PERCENT_EQ:
-    case TK_PLUS_EQ:  case TK_MINUS_EQ:
+    case TK_AMP_EQ:
+    case TK_CARET_EQ:
+    case TK_PIPE_EQ:
+    case TK_LT_LT_EQ:
+    case TK_GT_GT_EQ:
+    case TK_STAR_EQ:
+    case TK_SLASH_EQ:
+    case TK_PERCENT_EQ:
+    case TK_PLUS_EQ:
+    case TK_MINUS_EQ:
     case TK_EQ:
         return true;
     default:
@@ -744,44 +750,61 @@ static bool is_assign_op(TokenKind kind)
 static BindPower get_op_bp(TokenKind kind)
 {
     switch (kind) {
-    case TK_COMMA:                                          // ","
+    case TK_COMMA:  // ","
         return (BindPower) { .left = 1, .right = 2 };
-    case TK_AMP_EQ:   case TK_CARET_EQ: case TK_PIPE_EQ:    // "&=", "^=", "|="
-    case TK_LT_LT_EQ: case TK_GT_GT_EQ:                     // "<<=", ">>="
-    case TK_STAR_EQ:  case TK_SLASH_EQ: case TK_PERCENT_EQ: // "*=", "/=", "%="
-    case TK_PLUS_EQ:  case TK_MINUS_EQ:                     // "+=", "-="
-    case TK_EQ:                                             // "="
+    case TK_AMP_EQ:
+    case TK_CARET_EQ:
+    case TK_PIPE_EQ:  // "&=", "^=", "|="
+    case TK_LT_LT_EQ:
+    case TK_GT_GT_EQ:  // "<<=", ">>="
+    case TK_STAR_EQ:
+    case TK_SLASH_EQ:
+    case TK_PERCENT_EQ:  // "*=", "/=", "%="
+    case TK_PLUS_EQ:
+    case TK_MINUS_EQ:  // "+=", "-="
+    case TK_EQ:        // "="
         return (BindPower) { .left = 3, .right = 2 };
-    case TK_QUESTION: case TK_COLON:                        // "?" ":"
+    case TK_QUESTION:
+    case TK_COLON:  // "?" ":"
         return (BindPower) { .left = 4, .right = 3 };
-    case TK_PIPE_PIPE:                                      // "||"
+    case TK_PIPE_PIPE:  // "||"
         return (BindPower) { .left = 4, .right = 5 };
-    case TK_AMP_AMP:                                        // "&&"
+    case TK_AMP_AMP:  // "&&"
         return (BindPower) { .left = 5, .right = 6 };
-    case TK_PIPE:                                           // "|"
+    case TK_PIPE:  // "|"
         return (BindPower) { .left = 6, .right = 7 };
-    case TK_CARET:                                          // "^"
+    case TK_CARET:  // "^"
         return (BindPower) { .left = 7, .right = 8 };
-    case TK_AMP:                                            // "&"
+    case TK_AMP:  // "&"
         return (BindPower) { .left = 8, .right = 9 };
-    case TK_EQ_EQ: case TK_BANG_EQ:                         // "==", "!="
+    case TK_EQ_EQ:
+    case TK_BANG_EQ:  // "==", "!="
         return (BindPower) { .left = 9, .right = 10 };
-    case TK_LT: case TK_LT_EQ:                              // "<", "<="
-    case TK_GT: case TK_GT_EQ:                              // ">", ">="
+    case TK_LT:
+    case TK_LT_EQ:  // "<", "<="
+    case TK_GT:
+    case TK_GT_EQ:  // ">", ">="
         return (BindPower) { .left = 10, .right = 11 };
-    case TK_LT_LT: case TK_GT_GT:                           // "<<", ">>"
+    case TK_LT_LT:
+    case TK_GT_GT:  // "<<", ">>"
         return (BindPower) { .left = 11, .right = 12 };
-    case TK_PLUS: case TK_MINUS:                            // "+", "-"
+    case TK_PLUS:
+    case TK_MINUS:  // "+", "-"
         return (BindPower) { .left = 12, .right = 13 };
-    case TK_STAR: case TK_SLASH: case TK_PERCENT:           // "*", "/", "%"
+    case TK_STAR:
+    case TK_SLASH:
+    case TK_PERCENT:  // "*", "/", "%"
         return (BindPower) { .left = 13, .right = 14 };
     // NOTE: `get_prefix_op` needs to be updated if the highest postfix operator
     // changes
-    case TK_DOT: case TK_MINUS_GT:                          // ".", "->"
-    case TK_OPAREN: case TK_OBRACK:                         // "(", "["
-    case TK_PLUS_PLUS: case TK_MINUS_MINUS:                 // "++", "--"
+    case TK_DOT:
+    case TK_MINUS_GT:  // ".", "->"
+    case TK_OPAREN:
+    case TK_OBRACK:  // "(", "["
+    case TK_PLUS_PLUS:
+    case TK_MINUS_MINUS:  // "++", "--"
         return (BindPower) { .left = 14, .right = 15 };
-    default:                                                // non-operation
+    default:  // non-operation
         return (BindPower) { .left = 0, .right = 0 };
     }
 }

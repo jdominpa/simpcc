@@ -1,10 +1,10 @@
 #ifndef AST_PRINT_H_
 #define AST_PRINT_H_
 
+#include <stdio.h>
+
 #include "ast.h"
 #include "common.h"
-
-#include <stdio.h>
 
 #define TYPE_STR_CAP 256
 

@@ -26,17 +26,36 @@ BraceWrapping:
   # IndentBraces: false ensures braces themselves are not indented,
   # but content inside braces respects IndentWidth setting
 
-AllowShortIfStatementsOnASingleLine: false
-AllowShortLoopsOnASingleLine: false
+# === Braces on control statements ===
+# The rule is: braces on every if/else/for/while/do body, EXCEPT when the
+# body is a single statement, which may go bare whether or not it wraps onto
+# further lines. Two exceptions take their braces back:
+#   1. If any arm of an if/else chain needs braces, every arm gets them.
+#   2. A body that is itself a control statement is braced, so that a later
+#      `else` never has to be matched by eye.
+#
+# clang-format cannot enforce this, so neither `InsertBraces` nor
+# `RemoveBracesLLVM` is set and it leaves the author's braces alone.
+AllowShortIfStatementsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortCaseLabelsOnASingleLine: true
 AllowShortBlocksOnASingleLine: Always
 # AllowShortFunctionsOnASingleLine: None enforces function bodies
 # to always be on separate lines, following K&R convention
 AllowShortFunctionsOnASingleLine: None
 
+# Column-align the bodies of one-line `case X: ...;` labels, so a dispatch
+# table reads as a table.
+AlignConsecutiveShortCaseStatements:
+  Enabled: true
+  AcrossEmptyLines: true
+  AcrossComments: true
+  AlignCaseColons: false
+
 IndentCaseLabels: false
 SpaceAfterCStyleCast: true
-# ColumnLimit: 80 wraps lines at 80 characters for better readability
-ColumnLimit: 80
+# Disable ColumnLimit
+ColumnLimit: 0
 MaxEmptyLinesToKeep: 1
 Cpp11BracedListStyle: false
 AlignTrailingComments: true

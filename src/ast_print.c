@@ -112,7 +112,7 @@ static const char *type_quals_to_str(char *buf, size_t size, uint8_t quals)
         TypeQual qual;
         const char *name;
     } qual_names[] = {
-        { QUAL_CONST,    "const"    },
+        { QUAL_CONST, "const" },
         { QUAL_VOLATILE, "volatile" },
         { QUAL_RESTRICT, "restrict" },
     };
@@ -237,7 +237,7 @@ static void type_to_str_rec(char *buf, size_t size, const Type *ty,
         cursor_printf(&c, "%s(", decl);
         for (size_t i = 0; i < ty->func.argc; ++i)
             cursor_printf(&c, "%s%s",
-                     i > 0 ? ", " : "", TYPE_TO_STR(ty->func.args[i]));
+                          i > 0 ? ", " : "", TYPE_TO_STR(ty->func.args[i]));
         if (ty->func.is_variadic)
             cursor_printf(&c, "%s...", ty->func.argc > 0 ? ", " : "");
         else if (ty->func.argc == 0)

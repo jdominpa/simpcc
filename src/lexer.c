@@ -196,7 +196,10 @@ const char *token_to_str(Token t)
 // Converts a token of kind `TK_NUM` into its value.
 NumericLiteral token_numeric_value(Token t)
 {
-    NumericLiteral num = { .kind = NUMLIT_INT, .valid = true, };
+    NumericLiteral num = {
+        .kind = NUMLIT_INT,
+        .valid = true,
+    };
     if (t.kind != TK_NUM || t.len == 0) {
         num.valid = false;
         return num;

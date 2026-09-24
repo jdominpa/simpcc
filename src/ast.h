@@ -26,15 +26,15 @@ typedef enum {
     TYPE_PTR,
     TYPE_ARRAY,
     TYPE_FUNC,
-    TYPE_VLA,     // variable length array
+    TYPE_VLA,  // variable length array
     TYPE_STRUCT,
     TYPE_UNION,
-    TYPE_NAMED,   // typedef types
+    TYPE_NAMED,  // typedef types
     TYPE_COUNT,
 } TypeKind;
 
 typedef enum {
-    QUAL_CONST    = 1 << 0,
+    QUAL_CONST = 1 << 0,
     QUAL_VOLATILE = 1 << 1,
     QUAL_RESTRICT = 1 << 2,
 } TypeQual;
@@ -116,38 +116,38 @@ typedef enum {
 } BinopKind;
 
 typedef enum {
-    ASSIGN_AND,     // `&=`
-    ASSIGN_XOR,     // `^=`
-    ASSIGN_OR,      // `|=`
-    ASSIGN_LSFT,    // `<<=`
-    ASSIGN_RSFT,    // `>>=`
-    ASSIGN_MULT,    // `*=`
-    ASSIGN_DIV,     // `/=`
-    ASSIGN_MOD,     // `%=`
-    ASSIGN_PLUS,    // `+=`
-    ASSIGN_MINUS,   // `-=`
-    ASSIGN_EQ,      // `=`
+    ASSIGN_AND,    // `&=`
+    ASSIGN_XOR,    // `^=`
+    ASSIGN_OR,     // `|=`
+    ASSIGN_LSFT,   // `<<=`
+    ASSIGN_RSFT,   // `>>=`
+    ASSIGN_MULT,   // `*=`
+    ASSIGN_DIV,    // `/=`
+    ASSIGN_MOD,    // `%=`
+    ASSIGN_PLUS,   // `+=`
+    ASSIGN_MINUS,  // `-=`
+    ASSIGN_EQ,     // `=`
     ASSIGN_COUNT,
 } AssignKind;
 
 typedef enum {
-    EXPR_CHAR,      // character literal
-    EXPR_STR,       // string literal
-    EXPR_NUM,       // numeric literal
-    EXPR_IDENT,     // identifier
-    EXPR_CLIT,      // compound literal
-    EXPR_UNOP,      // -x, ~x, !x, *x, &x, ++x, x++, --x, x--
-    EXPR_BINOP,     // +, -, *, /, %, etc.
-    EXPR_TERNOP,    // expr "?" expr ":" expr
-    EXPR_FUNC_CALL, // name "(" args ")"
-    EXPR_ASSIGN,    // Type name "=" expr
-    EXPR_INDEX,     // name "[" expr "]"
-    EXPR_FIELD,     // name "." name
-    EXPR_ARROW,     // name "->" name
-    EXPR_CAST,      // "(" Type ")" expr
-    EXPR_SIZEOF_TY, // "sizeof(" Type ")"
-    EXPR_SIZEOF_EX, // "sizeof" expr
-    EXPR_ALIGNOF,   // "_Alignof(" Type ")"
+    EXPR_CHAR,       // character literal
+    EXPR_STR,        // string literal
+    EXPR_NUM,        // numeric literal
+    EXPR_IDENT,      // identifier
+    EXPR_CLIT,       // compound literal
+    EXPR_UNOP,       // -x, ~x, !x, *x, &x, ++x, x++, --x, x--
+    EXPR_BINOP,      // +, -, *, /, %, etc.
+    EXPR_TERNOP,     // expr "?" expr ":" expr
+    EXPR_FUNC_CALL,  // name "(" args ")"
+    EXPR_ASSIGN,     // Type name "=" expr
+    EXPR_INDEX,      // name "[" expr "]"
+    EXPR_FIELD,      // name "." name
+    EXPR_ARROW,      // name "->" name
+    EXPR_CAST,       // "(" Type ")" expr
+    EXPR_SIZEOF_TY,  // "sizeof(" Type ")"
+    EXPR_SIZEOF_EX,  // "sizeof" expr
+    EXPR_ALIGNOF,    // "_Alignof(" Type ")"
     EXPR_COUNT,
 } ExprKind;
 
