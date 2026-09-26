@@ -579,7 +579,7 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
     case STMT_BLOCK:
         fprintf(ctx->out, "(block");
         print_loc(ctx, s->loc);
-        for (size_t i = 0; i < s->block.count; ++i) {
+        for (size_t i = 0; i < s->block.stmt_count; ++i) {
             char stmt_label[50];
             sprintf(stmt_label, "statement %zu", i);
             print_stmt_field(ctx, stmt_label, s->block.stmts[i]);

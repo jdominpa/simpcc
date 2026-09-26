@@ -1213,7 +1213,7 @@ static Stmt *parse_block_stmts(Parser *p)
     } else {
         s->block.stmts = NULL;
     }
-    s->block.count = stmts.count;
+    s->block.stmt_count = stmts.count;
     free(stmts.items);
     return s;
 }

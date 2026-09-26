@@ -249,7 +249,7 @@ struct Stmt {
         Expr *expr;
         struct {
             Stmt **stmts;
-            size_t count;
+            size_t stmt_count;
         } block;
         struct {
             const char *name;
