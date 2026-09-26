@@ -73,6 +73,22 @@ static bool parser_expect(Parser *p, TokenKind kind)
     }
 }
 
+// Returns the parser position after the `)` that matches the `(` already
+// consumed before `start`. Purely a position scan, doesn't modify the parser
+// `p` position at all.
+static size_t parser_skip_balanced_parens(const Parser *p, size_t start)
+{
+    size_t depth = 1;
+    size_t i = start;
+    while (i < p->token_count && p->tokens[i].kind != TK_EOF) {
+        if (p->tokens[i].kind == TK_OPAREN) depth++;
+        if (p->tokens[i].kind == TK_CPAREN && --depth == 0) return i + 1;
+        i++;
+    }
+    diag_fatal_at(p->tokens[i].loc,
+                  "unmatched `%s` found", token_kind_to_str[TK_OPAREN]);
+}
+
 // Returns whether the content of a given token `t` matches a string `str`.
 static inline bool token_equal(Token t, const char *str)
 {
@@ -148,6 +164,16 @@ typedef enum {
                             // function specifiers
     DECL_SPEC_PARAM,        // parameter-declaration: `register` and nothing else
 } DeclSpecMode;
+
+static bool is_decl_spec(const Scope *sc, Token t)
+{
+    if (is_type(sc, t)) return true;
+    if (t.kind != TK_KW) return false;
+    return token_equal(t, "typedef") || token_equal(t, "extern") ||
+           token_equal(t, "static") || token_equal(t, "auto") ||
+           token_equal(t, "register") || token_equal(t, "inline") ||
+           token_equal(t, "_Noreturn");
+}
 
 // Parses a run of declaration specifiers. The `mode` specifies which type of
 // specifiers are allowed in the declaration.
@@ -411,6 +437,7 @@ typedef enum {
 } DeclaratorMode;
 
 static Type *parse_declarator_suffix(Parser *p, Type *base);
+static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode);
 
 // Parses the [...] array suffixes of a declarator. Must be called after
 // consuming the opening `[`.
@@ -456,8 +483,6 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
     array->array.base = elem;
     return array;
 }
-
-static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode);
 
 static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
 {
@@ -582,46 +607,74 @@ static Type *parse_declarator_suffix(Parser *p, Type *base)
 }
 
 // Parses a single declarator with base type `base`.
-static Declarator parse_declarator(Parser *p, const Type *base, DeclaratorMode mode)
+static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
 {
     Declarator dec = { 0 };
-    Type *ty = arena_alloc(p->a, Type);
-    *ty = *base;
+    Type *ty = base;
 
     // Pointer stars
     while (parser_check(p, TK_STAR)) {
-        Type *inner = arena_alloc(p->a, Type);
-        *inner = *ty;
-        *ty = (Type) { .kind = TYPE_PTR,
-                       .loc = parser_peek(p).loc,
-                       .ptr.base = inner };
+        Type *ptr = arena_alloc(p->a, Type);
+        *ptr = (Type) { .kind = TYPE_PTR,
+                        .loc = parser_peek(p).loc,
+                        .ptr.base = ty };
         parser_bump(p);
-        ty->quals |= parse_type_quals(p);
+        ptr->quals |= parse_type_quals(p);
+        ty = ptr;
     }
     dec.ty = ty;  // base type of declarator
 
-    // Declarator name
-    switch (mode) {
-    case DECLARATOR_NAMED: {
-        if (!parser_expect(p, TK_IDENT))
-            UNREACHABLE("parser_expect is currently nonreturnable");
-        Token name = parser_prev(p);
-        dec.name = arena_strndup(p->a, name.start, name.len);
-        dec.name_loc = name.loc;
-        break;
-    }
-    case DECLARATOR_ABSTRACT:
-        break;
-    case DECLARATOR_OPTIONAL:
-        if (parser_eat(p, TK_IDENT)) {
+    if (parser_eat(p, TK_OPAREN)) {
+        if (is_decl_spec(&p->sc, parser_peek(p)) ||
+            parser_check(p, TK_CPAREN) ||
+            parser_check(p, TK_ELLIPSIS)) {
+            // Function parameter list suffix
+            if (mode == DECLARATOR_NAMED)
+                diag_fatal_at(parser_prev(p).loc,
+                              "expected declarator name or nested declarator but found function parameter list");
+            dec.ty = parse_declarator_func_suffix(p, dec.ty);
+        } else {
+            // Nested declarator
+            size_t nested_dec_start = p->pos;
+            p->pos = parser_skip_balanced_parens(p, nested_dec_start);
+            dec.ty = parse_declarator_suffix(p, dec.ty);
+            size_t dec_end = p->pos;
+
+            p->pos = nested_dec_start;
+            Declarator nested = parse_declarator(p, dec.ty, mode);
+            if (mode == DECLARATOR_NAMED && nested.name == NULL)
+                diag_fatal_at(parser_peek(p).loc,
+                              "declarator or nested declarator name missing from declaration");
+            p->pos = dec_end;
+
+            dec.name = nested.name;
+            dec.name_loc = nested.name_loc;
+            dec.ty = nested.ty;
+        }
+    } else {
+        // Declarator name
+        switch (mode) {
+        case DECLARATOR_NAMED: {
+            if (!parser_expect(p, TK_IDENT))
+                UNREACHABLE("parser_expect is currently nonreturnable");
             Token name = parser_prev(p);
             dec.name = arena_strndup(p->a, name.start, name.len);
             dec.name_loc = name.loc;
+            break;
         }
-        break;
+        case DECLARATOR_ABSTRACT:
+            break;
+        case DECLARATOR_OPTIONAL:
+            if (parser_eat(p, TK_IDENT)) {
+                Token name = parser_prev(p);
+                dec.name = arena_strndup(p->a, name.start, name.len);
+                dec.name_loc = name.loc;
+            }
+            break;
+        }
+        dec.ty = parse_declarator_suffix(p, dec.ty);
     }
 
-    dec.ty = parse_declarator_suffix(p, dec.ty);
     return dec;
 }
 
