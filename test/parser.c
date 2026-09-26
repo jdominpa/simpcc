@@ -175,6 +175,16 @@ DEFINE_TEST(test_function_parameters_decay)
     expect_type("int(int(char))", "(type int(int (*)(char)))");
 }
 
+DEFINE_TEST(test_nested_types)
+{
+    expect_type("int (*)[3]", "(type int (*)[3])");
+    expect_type("int (*)(void)", "(type int (*)(void))");
+    expect_type("int (*[3])(void)", "(type int (*[3])(void))");
+    expect_type("int (*(*)[3])(...)", "(type int (*(*)[3])(...))");
+    expect_type("int ((*))[3]", "(type int (*)[3])");
+    expect_type("int ((*(*)[3]))(void)", "(type int (*(*)[3])(void))");
+}
+
 //
 // Expression tests
 //
@@ -670,6 +680,11 @@ DEFINE_TEST(test_function_types_fatal_paths)
     EXPECT_EXIT(1, { expect_type("int(int x, int x)", NULL); });
 }
 
+DEFINE_TEST(test_nested_type_unmatched_parens_is_fatal)
+{
+    EXPECT_EXIT(1, { expect_type("int (*", NULL); });
+}
+
 #endif  // _WIN32
 
 int main(void)
@@ -681,6 +696,7 @@ int main(void)
     RUN_TEST(test_qualified_types);
     RUN_TEST(test_function_types);
     RUN_TEST(test_function_parameters_decay);
+    RUN_TEST(test_nested_types);
 
     // Expression tests
     RUN_TEST(test_literals);
@@ -727,6 +743,7 @@ int main(void)
     RUN_TEST(test_type_name_rejects_decl_specifiers);
     RUN_TEST(test_missing_type_specifier_is_fatal);
     RUN_TEST(test_function_types_fatal_paths);
+    RUN_TEST(test_nested_type_unmatched_parens_is_fatal);
 #endif
 
     TEST_SUMMARY();
