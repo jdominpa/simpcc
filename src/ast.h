@@ -63,8 +63,8 @@ struct Type {
         } array;
         struct {
             Type *ret;
-            size_t argc;
             Type **args;
+            size_t arg_count;
             bool is_variadic;
         } func;
         struct {
@@ -182,8 +182,8 @@ struct Expr {
         } ternop;
         struct {
             Expr *callee;
-            size_t argc;
             Expr **args;
+            size_t arg_count;
         } func_call;
         struct {
             AssignKind kind;

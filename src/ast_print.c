@@ -235,12 +235,12 @@ static void type_to_str_rec(char *buf, size_t size, const Type *ty,
         char args[TYPE_STR_CAP];
         StrCursor c = { args, sizeof args, 0 };
         cursor_printf(&c, "%s(", decl);
-        for (size_t i = 0; i < ty->func.argc; ++i)
+        for (size_t i = 0; i < ty->func.arg_count; ++i)
             cursor_printf(&c, "%s%s",
                           i > 0 ? ", " : "", TYPE_TO_STR(ty->func.args[i]));
         if (ty->func.is_variadic)
-            cursor_printf(&c, "%s...", ty->func.argc > 0 ? ", " : "");
-        else if (ty->func.argc == 0)
+            cursor_printf(&c, "%s...", ty->func.arg_count > 0 ? ", " : "");
+        else if (ty->func.arg_count == 0)
             cursor_printf(&c, "void");
         cursor_printf(&c, ")");
         type_to_str_rec(buf, size, ty->func.ret, args);
@@ -377,11 +377,11 @@ static void print_type_ctx(PrintCtx *ctx, const Type *ty)
         fprintf(ctx->out, "(func_type");
         print_loc(ctx, ty->loc);
         print_type_field(ctx, "ret_type", ty->func.ret);
-        if (ty->func.argc == 0 && !ty->func.is_variadic) {
+        if (ty->func.arg_count == 0 && !ty->func.is_variadic) {
             fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
             fprintf(ctx->out, "args: void");
         } else {
-            for (size_t i = 0; i < ty->func.argc; ++i) {
+            for (size_t i = 0; i < ty->func.arg_count; ++i) {
                 char arg_label[50];
                 sprintf(arg_label, "arg %zu", i);
                 print_type_field(ctx, arg_label, ty->func.args[i]);
@@ -493,7 +493,7 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
         fprintf(ctx->out, "(fn_call");
         print_loc(ctx, e->loc);
         print_expr_field(ctx, "callee", e->func_call.callee);
-        for (size_t i = 0; i < e->func_call.argc; ++i) {
+        for (size_t i = 0; i < e->func_call.arg_count; ++i) {
             char arg_label[50];
             sprintf(arg_label, "arg %zu", i);
             print_expr_field(ctx, arg_label, e->func_call.args[i]);

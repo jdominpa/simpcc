@@ -491,7 +491,7 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
     *func = (Type) {
         .kind = TYPE_FUNC,
         .loc = parser_prev(p).loc,
-        .func = { .ret = ret, .argc = 0, .args = NULL, .is_variadic = false }
+        .func = { .ret = ret, .arg_count = 0, .args = NULL, .is_variadic = false }
     };
 
     struct {
@@ -582,7 +582,7 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
     scope_exit(&p->sc);
 
     if (args.count > 0) {
-        func->func.argc = args.count;
+        func->func.arg_count = args.count;
         func->func.args = arena_alloc_many(p->a, Type *, args.count);
         memcpy(func->func.args, args.items, args.count * sizeof(Type *));
     }
@@ -1127,7 +1127,7 @@ static Expr *parse_expr_bp(Parser *p, uint8_t min_bp)
             e->kind = EXPR_FUNC_CALL;
             e->loc = callee->loc;
             e->func_call.callee = callee;
-            e->func_call.args = parse_func_call_args(p, &e->func_call.argc);
+            e->func_call.args = parse_func_call_args(p, &e->func_call.arg_count);
             continue;
         }
 
