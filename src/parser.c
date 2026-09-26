@@ -85,7 +85,7 @@ static size_t parser_skip_balanced_parens(const Parser *p, size_t start)
         if (p->tokens[i].kind == TK_CPAREN && --depth == 0) return i + 1;
         i++;
     }
-    diag_fatal_at(p->tokens[i].loc,
+    diag_fatal_at(p->tokens[start - 1].loc,
                   "unmatched `%s` found", token_kind_to_str[TK_OPAREN]);
 }
 
@@ -645,6 +645,8 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
             if (mode == DECLARATOR_NAMED && nested.name == NULL)
                 diag_fatal_at(parser_peek(p).loc,
                               "declarator or nested declarator name missing from declaration");
+            if (!parser_expect(p, TK_CPAREN))
+                UNREACHABLE("parser_expect is currently nonreturnable");
             p->pos = dec_end;
 
             dec.name = nested.name;

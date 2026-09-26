@@ -680,9 +680,11 @@ DEFINE_TEST(test_function_types_fatal_paths)
     EXPECT_EXIT(1, { expect_type("int(int x, int x)", NULL); });
 }
 
-DEFINE_TEST(test_nested_type_unmatched_parens_is_fatal)
+DEFINE_TEST(test_nested_types_fatal_paths)
 {
+    EXPECT_EXIT(1, { expect_type("int (*junk)[3]", NULL); });
     EXPECT_EXIT(1, { expect_type("int (*", NULL); });
+    EXPECT_EXIT(1, { expect_type("int ((*)", NULL); });
 }
 
 #endif  // _WIN32
@@ -743,7 +745,7 @@ int main(void)
     RUN_TEST(test_type_name_rejects_decl_specifiers);
     RUN_TEST(test_missing_type_specifier_is_fatal);
     RUN_TEST(test_function_types_fatal_paths);
-    RUN_TEST(test_nested_type_unmatched_parens_is_fatal);
+    RUN_TEST(test_nested_types_fatal_paths);
 #endif
 
     TEST_SUMMARY();
