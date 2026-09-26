@@ -10,6 +10,17 @@
 
 #define INDENT_WIDTH 2
 
+typedef struct {
+    FILE *out;
+    uint32_t depth;
+    bool compact;
+    bool print_locs;
+} PrintCtx;
+
+static void print_type_ctx(PrintCtx *ctx, const Type *ty);
+static void print_expr_ctx(PrintCtx *ctx, const Expr *e);
+static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s);
+
 // A write cursor over a fixed-capacity buffer. `len` is kept strictly below
 // `size`, so the buffer stays NUL-terminated and a build that runs out of room
 // stops growing instead of running past the end.
@@ -271,13 +282,6 @@ const char *type_to_str(char *buf, size_t size, const Type *ty)
     return buf;
 }
 
-typedef struct {
-    FILE *out;
-    uint32_t depth;
-    bool compact;
-    bool print_locs;
-} PrintCtx;
-
 static inline void print_loc(const PrintCtx *ctx, Loc loc)
 {
     if (ctx->print_locs)
@@ -291,10 +295,6 @@ static void print_type_quals_field(const PrintCtx *ctx, const uint8_t quals)
     fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
     fprintf(ctx->out, "quals: %s", type_quals_to_str(buf, sizeof buf, quals));
 }
-
-static void print_type_ctx(PrintCtx *ctx, const Type *ty);
-static void print_expr_ctx(PrintCtx *ctx, const Expr *e);
-static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s);
 
 static void print_type_field(PrintCtx *ctx, const char *label, const Type *ty)
 {
