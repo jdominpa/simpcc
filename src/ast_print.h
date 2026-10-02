@@ -20,5 +20,7 @@ void print_expr(FILE *out, const Expr *e, uint32_t depth);
 void print_expr_compact(FILE *out, const Expr *e);
 void print_stmt(FILE *out, const Stmt *s, uint32_t depth);
 void print_stmt_compact(FILE *out, const Stmt *s);
+void print_decl(FILE *out, const Decl *decl, uint32_t depth);
+void print_decl_compact(FILE *out, const Decl *decl);
 
 #endif  // AST_PRINT_H_

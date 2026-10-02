@@ -10,17 +10,6 @@
 
 #define INDENT_WIDTH 2
 
-typedef struct {
-    FILE *out;
-    uint32_t depth;
-    bool compact;
-    bool print_locs;
-} PrintCtx;
-
-static void print_type_ctx(PrintCtx *ctx, const Type *ty);
-static void print_expr_ctx(PrintCtx *ctx, const Expr *e);
-static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s);
-
 // A write cursor over a fixed-capacity buffer. `len` is kept strictly below
 // `size`, so the buffer stays NUL-terminated and a build that runs out of room
 // stops growing instead of running past the end.
@@ -30,8 +19,18 @@ typedef struct {
     size_t used;
 } StrCursor;
 
-static void cursor_printf(StrCursor *c, const char *fmt, ...)
-    __attribute__((format(printf, 2, 3)));
+typedef struct {
+    FILE *out;
+    uint32_t depth;
+    bool compact;
+    bool print_locs;
+} PrintCtx;
+
+static void cursor_printf(StrCursor *c, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+static void print_type_ctx(PrintCtx *ctx, const Type *ty);
+static void print_expr_ctx(PrintCtx *ctx, const Expr *e);
+static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s);
+static void print_decl_ctx(PrintCtx *ctx, const Decl *decl);
 
 static void cursor_printf(StrCursor *c, const char *fmt, ...)
 {
@@ -113,6 +112,22 @@ static const char *assign_kind_to_str(AssignKind kind)
     case ASSIGN_COUNT: break;
     }
     UNREACHABLE("assign_kind_to_str");
+}
+
+static const char *storage_class_to_str(StorageClass class)
+{
+    static_assert(STORAGE_COUNT == 6,
+                  "storage_class_to_str: `STORAGE_COUNT` value has changed");
+    switch (class) {
+    case STORAGE_NONE:     return "none";
+    case STORAGE_TYPEDEF:  return "typedef";
+    case STORAGE_EXTERN:   return "extern";
+    case STORAGE_STATIC:   return "static";
+    case STORAGE_AUTO:     return "auto";
+    case STORAGE_REGISTER: return "register";
+    case STORAGE_COUNT:    break;
+    }
+    UNREACHABLE("storage_class_to_str");
 }
 
 // Writes the qualifier keywords held in `quals` to `buf`, separated by single
@@ -338,6 +353,18 @@ static void print_stmt_field(PrintCtx *ctx, const char *label, const Stmt *s)
     ctx->depth--;
 }
 
+static void print_text_field(PrintCtx *ctx, const char *label, const char *field)
+{
+    if (ctx->compact) {
+        if (field != NULL)
+            fprintf(ctx->out, " %s", field);
+    } else {
+        fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
+        if (label != NULL)
+            fprintf(ctx->out, "%s: %s", label, field);
+    }
+}
+
 static void print_type_ctx(PrintCtx *ctx, const Type *ty)
 {
     static_assert(TYPE_COUNT == 17,
@@ -382,9 +409,9 @@ static void print_type_ctx(PrintCtx *ctx, const Type *ty)
             fprintf(ctx->out, "args: void");
         } else {
             for (size_t i = 0; i < ty->func.arg_count; ++i) {
-                char arg_label[50];
-                sprintf(arg_label, "arg %zu", i);
-                print_type_field(ctx, arg_label, ty->func.args[i]);
+                char label[32];
+                snprintf(label, sizeof label, "arg %zu", i);
+                print_type_field(ctx, label, ty->func.args[i]);
             }
             if (ty->func.is_variadic) {
                 fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
@@ -494,9 +521,9 @@ static void print_expr_ctx(PrintCtx *ctx, const Expr *e)
         print_loc(ctx, e->loc);
         print_expr_field(ctx, "callee", e->func_call.callee);
         for (size_t i = 0; i < e->func_call.arg_count; ++i) {
-            char arg_label[50];
-            sprintf(arg_label, "arg %zu", i);
-            print_expr_field(ctx, arg_label, e->func_call.args[i]);
+            char label[32];
+            snprintf(label, sizeof label, "arg %zu", i);
+            print_expr_field(ctx, label, e->func_call.args[i]);
         }
         fprintf(ctx->out, ")");
         break;
@@ -580,9 +607,9 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         fprintf(ctx->out, "(block");
         print_loc(ctx, s->loc);
         for (size_t i = 0; i < s->block.stmt_count; ++i) {
-            char stmt_label[50];
-            sprintf(stmt_label, "statement %zu", i);
-            print_stmt_field(ctx, stmt_label, s->block.stmts[i]);
+            char label[32];
+            snprintf(label, sizeof label, "statement %zu", i);
+            print_stmt_field(ctx, label, s->block.stmts[i]);
         }
         fprintf(ctx->out, ")");
         break;
@@ -594,7 +621,8 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         fprintf(ctx->out, ")");
         break;
     case STMT_DECL:
-        TODO("print_stmt_ctx: implement `STMT_DECL`");
+        print_decl_ctx(ctx, s->decl);
+        break;
     case STMT_WHILE:
         fprintf(ctx->out, "(while");
         print_loc(ctx, s->loc);
@@ -651,6 +679,70 @@ static void print_stmt_ctx(PrintCtx *ctx, const Stmt *s)
         break;
     case STMT_COUNT:
         UNREACHABLE("print_stmt_ctx");
+    }
+}
+
+static void print_init_declarator(PrintCtx *ctx, const char *label,
+                                  InitDeclarator init_dec)
+{
+    if (ctx->compact) {
+        fprintf(ctx->out, " ");
+    } else {
+        fprintf(ctx->out, "\n%*s", (ctx->depth + 1) * INDENT_WIDTH, "");
+        fprintf(ctx->out, "%s: ", label);
+    }
+    ctx->depth++;
+    fprintf(ctx->out, "(%s", init_dec.name);
+    print_loc(ctx, init_dec.name_loc);
+    print_type_field(ctx, "type", init_dec.ty);
+    if (init_dec.init != NULL)
+        print_expr_field(ctx, "init", init_dec.init);
+    fprintf(ctx->out, ")");
+    ctx->depth--;
+}
+
+static void print_decl_ctx(PrintCtx *ctx, const Decl *decl)
+{
+    if (decl == NULL) {
+        fprintf(ctx->out, "(null_error)");
+        return;
+    }
+
+    static_assert(DECL_COUNT == 5,
+                  "print_decl_ctx: `DECL_COUNT` value has changed");
+    switch (decl->kind) {
+    case DECL_DECLARATION:
+        fprintf(ctx->out, "(decl");
+        print_loc(ctx, decl->loc);
+        print_text_field(ctx, "storage",
+                         storage_class_to_str(decl->group.storage));
+        for (size_t i = 0; i < decl->group.init_dec_count; ++i) {
+            char label[32];
+            snprintf(label, sizeof label, "declarator %zu", i);
+            print_init_declarator(ctx, label, decl->group.init_decs[i]);
+        }
+        fprintf(ctx->out, ")");
+        break;
+    case DECL_STRUCT:
+        TODO("print_decl_ctx: implement `DECL_STRUCT`");
+    case DECL_ENUM:
+        TODO("print_decl_ctx: implement `DECL_ENUM`");
+    case DECL_UNION:
+        TODO("print_decl_ctx: implement `DECL_UNION`");
+    case DECL_FUNC_DEF:
+        fprintf(ctx->out, "(func_def");
+        print_loc(ctx, decl->loc);
+        print_init_declarator(ctx, "declarator", decl->func.init_dec);
+        for (size_t i = 0; i < decl->func.param_count; ++i) {
+            char label[32];
+            snprintf(label, sizeof label, "param %zu", i);
+            print_text_field(ctx, label, decl->func.param_names[i]);
+        }
+        print_stmt_field(ctx, "body", decl->func.body);
+        fprintf(ctx->out, ")");
+        break;
+    case DECL_COUNT:
+        UNREACHABLE("print_decl_ctx");
     }
 }
 
@@ -718,4 +810,26 @@ void print_stmt(FILE *out, const Stmt *s, uint32_t depth)
         .print_locs = true,
     };
     print_stmt_ctx(&ctx, s);
+}
+
+void print_decl_compact(FILE *out, const Decl *decl)
+{
+    PrintCtx ctx = {
+        .out = out,
+        .depth = 0,
+        .compact = true,
+        .print_locs = false,
+    };
+    print_decl_ctx(&ctx, decl);
+}
+
+void print_decl(FILE *out, const Decl *decl, uint32_t depth)
+{
+    PrintCtx ctx = {
+        .out = out,
+        .depth = depth,
+        .compact = false,
+        .print_locs = true,
+    };
+    print_decl_ctx(&ctx, decl);
 }

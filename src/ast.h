@@ -219,6 +219,7 @@ typedef enum {
     STORAGE_STATIC,
     STORAGE_AUTO,
     STORAGE_REGISTER,
+    STORAGE_COUNT,
 } StorageClass;
 
 typedef enum {
@@ -242,6 +243,7 @@ typedef enum {
 } StmtKind;
 
 typedef struct Stmt Stmt;
+typedef struct Decl Decl;
 struct Stmt {
     StmtKind kind;
     Loc loc;
@@ -256,12 +258,7 @@ struct Stmt {
             Stmt *next;
         } label;
         const char *goto_label;
-        struct {
-            StorageClass storage;
-            Type *ty;
-            Expr *var;
-            Expr *value;
-        } decl;
+        Decl *decl;
         struct {
             Expr *cond;
             Stmt *body;
@@ -295,23 +292,37 @@ struct Stmt {
 //
 
 typedef enum {
-    DECL_VAR,
+    DECL_DECLARATION,
     DECL_STRUCT,
     DECL_ENUM,
     DECL_UNION,
-    DECL_TYPEDEF,
-    DECL_FUNC,
+    // A function definition is considered a declaration of a function that
+    // includes a body for the function.
+    DECL_FUNC_DEF,
     DECL_COUNT,
 } DeclKind;
 
+// init-declarator := declarator ("=" initializer)?
 typedef struct {
+    Type *ty;
+    const char *name;
+    Loc name_loc;
+    Symbol *sym;
+    Expr *init;
+} InitDeclarator;
+
+struct Decl {
     DeclKind kind;
     Loc loc;
     union {
-        Stmt var_decl;
+        struct {
+            StorageClass storage;
+            InitDeclarator *init_decs;
+            size_t init_dec_count;
+        } group;
         struct {
             const char *name;
-            Stmt body;
+            Stmt *body;
         } _struct;
         struct {
             const char *name;
@@ -321,23 +332,16 @@ typedef struct {
         } _enum;
         struct {
             const char *name;
-            Stmt body;
+            Stmt *body;
         } _union;
         struct {
-            Type *orig;
-            Type *new;
-        } _typedef;
-        struct {
-            Type *ret_type;
-            const char *name;
-            Type **param_types;
+            InitDeclarator init_dec;
             const char **param_names;
             size_t param_count;
-            bool is_variadic;
-            Stmt body;
+            Stmt *body;
         } func;
     };
-} Decl;
+};
 
 typedef struct {
     Arena *a;

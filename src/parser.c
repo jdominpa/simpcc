@@ -57,6 +57,7 @@ typedef enum {
 //
 
 static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
+static bool is_decl_spec(const Scope *sc, Token t);
 static DeclSpec parse_decl_spec(Parser *p, DeclSpecMode mode);
 static Type *parse_declarator_suffix(Parser *p, Type *base);
 static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode);
@@ -757,9 +758,9 @@ Stmt *parse_stmt(Parser *p)
             diag_fatal_at(t.loc, "implement the rest of stmts beginning with `TK_IDENT`");
     case TK_KW: {
         Stmt *s = arena_alloc(p->a, Stmt);
+        s->loc = t.loc;
         if (token_equal(t, "while")) {
             s->kind = STMT_WHILE;
-            s->loc = t.loc;
             if (!parser_expect(p, TK_OPAREN))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             s->_while.cond = parse_expr(p);
@@ -768,7 +769,6 @@ Stmt *parse_stmt(Parser *p)
             s->_while.body = parse_stmt(p);
         } else if (token_equal(t, "do")) {
             s->kind = STMT_DO;
-            s->loc = t.loc;
             s->_while.body = parse_stmt(p);
             t = parser_peek(p);
             if (!parser_expect(p, TK_KW) || !token_equal(t, "while"))
@@ -780,7 +780,6 @@ Stmt *parse_stmt(Parser *p)
                 UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "if")) {
             s->kind = STMT_IF;
-            s->loc = t.loc;
             if (!parser_expect(p, TK_OPAREN))
                 UNREACHABLE("parser_expect is currently nonreturnable");
             s->_if.cond = parse_expr(p);
@@ -794,17 +793,14 @@ Stmt *parse_stmt(Parser *p)
             }
         } else if (token_equal(t, "break")) {
             s->kind = STMT_BREAK;
-            s->loc = t.loc;
             if (!parser_expect(p, TK_SEMI))
                 UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "continue")) {
             s->kind = STMT_CONT;
-            s->loc = t.loc;
             if (!parser_expect(p, TK_SEMI))
                 UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "goto")) {
             s->kind = STMT_GOTO;
-            s->loc = t.loc;
             t = parser_peek(p);
             if (!parser_expect(p, TK_IDENT))
                 UNREACHABLE("parser_expect is currently nonreturnable");
@@ -813,12 +809,16 @@ Stmt *parse_stmt(Parser *p)
                 UNREACHABLE("parser_expect is currently nonreturnable");
         } else if (token_equal(t, "return")) {
             s->kind = STMT_RET;
-            s->loc = t.loc;
             s->_return = parser_check(p, TK_SEMI) ? NULL : parse_expr(p);
             if (!parser_expect(p, TK_SEMI))
                 UNREACHABLE("parser_expect is currently nonreturnable");
-        } else
+        } else if (is_decl_spec(&p->sc, t)) {
+            p->pos--;
+            s->kind = STMT_DECL;
+            s->decl = parse_decl(p, DECL_CTX_BLOCK);
+        } else {
             diag_fatal_at(t.loc, "implemenet the rest of stmts beginning with `TK_KW`");
+        }
         return s;
     }
     case TK_OBRACE:
@@ -1333,6 +1333,118 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
     }
 
     return dec;
+}
+
+// declaration := declaration-specifiers init-declarator* ";"
+// declaration-specifiers := (storage-class-specifier |
+//                            type-specifier-qualifier |
+//                            function-specifier)+
+Decl *parse_decl(Parser *p, DeclContext ctx)
+{
+    DeclSpec spec = parse_decl_spec(p, DECL_SPEC_DECLARATION);
+    Decl *decl = arena_alloc(p->a, Decl);
+    *decl = (Decl) {
+        .kind = DECL_DECLARATION,
+        .loc = spec.loc,
+        .group = { .storage = spec.storage },
+    };
+
+    struct {
+        InitDeclarator *items;
+        size_t count;
+        size_t capacity;
+    } declarators = { 0 };
+
+    while (!parser_at_eof(p) && !parser_check(p, TK_SEMI)) {
+        Declarator dec = parse_declarator(p, spec.base, DECLARATOR_NAMED);
+
+        // Check if we are parsing a function-definition.
+        if (dec.ty->kind == TYPE_FUNC && parser_check(p, TK_OBRACE)) {
+            Loc brace_loc = parser_peek(p).loc;
+            free(declarators.items);
+            if (ctx == DECL_CTX_BLOCK)
+                diag_fatal_at(brace_loc,
+                              "nested definition of function `%s` is not allowed", dec.name);
+            if (spec.storage == STORAGE_TYPEDEF)
+                diag_fatal_at(brace_loc,
+                              "a typedef declaration cannot have a function body");
+            if (declarators.count > 0)
+                diag_fatal_at(brace_loc,
+                              "a function definition cannot be combined with other declarators");
+            TODO("parse_decl: implement function definitions");
+        }
+        // Function declared at block scope takes no explicit storage class
+        // other than `extern`. A typedef naming a function type is a typedef,
+        // not a declaration of a function, so it is exempt.
+        if (ctx == DECL_CTX_BLOCK
+            && dec.ty->kind == TYPE_FUNC
+            && spec.storage != STORAGE_NONE
+            && spec.storage != STORAGE_EXTERN
+            && spec.storage != STORAGE_TYPEDEF) {
+            free(declarators.items);
+            diag_fatal_at(dec.name_loc,
+                          "function `%s` declared at block scope cannot have a storage class other than `extern`",
+                          dec.name);
+        }
+
+        SymbolKind sym_kind = spec.storage == STORAGE_TYPEDEF ? SYMBOL_TYPEDEF
+                              : dec.ty->kind == TYPE_FUNC     ? SYMBOL_FUNC
+                                                              : SYMBOL_VAR;
+        InitDeclarator init_dec = {
+            .ty = dec.ty,
+            .name = dec.name,
+            .name_loc = dec.name_loc,
+            .init = NULL,
+        };
+        init_dec.sym = arena_alloc(p->a, Symbol);
+        *init_dec.sym = (Symbol) {
+            .kind = sym_kind,
+            .ns = NS_VAR,
+            .loc = dec.name_loc,
+            .name = dec.name,
+            .ty = dec.ty,
+        };
+        scope_add_sym(&p->sc, init_dec.sym);
+
+        // Declarator initialization
+        if (parser_eat(p, TK_EQ)) {
+            if (spec.storage == STORAGE_TYPEDEF)
+                diag_fatal_at(parser_prev(p).loc,
+                              "a typedef declaration cannot have an initializer");
+            // use `parse_expr_bp` with `TK_COMMA` binding power instead of
+            // `parse_expr` to avoid `,` being parsed as the comma operator.
+            init_dec.init = parse_expr_bp(p, get_op_bp(TK_COMMA).right);
+        }
+
+        da_append(&declarators, init_dec,
+                  "could not allocate temporary memory to parse declaration");
+        if (!parser_eat(p, TK_COMMA)) break;
+        if (parser_check(p, TK_SEMI))
+            diag_fatal_at(parser_peek(p).loc,
+                          "trailing comma in declaration");
+    }
+    if (!parser_eat(p, TK_SEMI)) {
+        free(declarators.items);
+        // TODO: handle error instead of crashing
+        if (parser_at_eof(p))
+            diag_fatal_at(decl->loc, "missing `;` in declaration");
+        else
+            diag_fatal_at(parser_peek(p).loc,
+                          "expected `;` at the end of declaration, but found %s",
+                          token_to_str(parser_peek(p)));
+    }
+
+    if (declarators.count == 0) {
+        free(declarators.items);
+        diag_fatal_at(spec.loc,
+                      "expected at least one declarator in the declaration");
+    }
+    decl->group.init_dec_count = declarators.count;
+    decl->group.init_decs = arena_alloc_many(p->a, InitDeclarator, declarators.count);
+    memcpy(decl->group.init_decs, declarators.items,
+           declarators.count * sizeof(InitDeclarator));
+    free(declarators.items);
+    return decl;
 }
 
 //
