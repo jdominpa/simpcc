@@ -345,7 +345,7 @@ struct Decl {
 
 typedef struct {
     Arena *a;
-    Decl *decls;
+    Decl **decls;
     size_t decls_count;
 } TranslUnit;
 

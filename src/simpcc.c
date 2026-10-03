@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "arena.h"
+#include "ast_print.h"
 #include "common.h"
 #include "lexer.h"
 #include "parser.h"
@@ -95,7 +96,11 @@ int main(int argc, char **argv)
 
         // Parse translation unit
         Parser p = parser_init_from_file_path(&ast_arena, input_file);
-        parse_transl_unit(&p);
+        TranslUnit tl = parse_transl_unit(&p);
+        for (size_t i = 0; i < tl.decls_count; ++i) {
+            print_decl(stdout, tl.decls[i], 0);
+            printf("\n");
+        }
 
         // (possible IR)
         // Compile to assembly

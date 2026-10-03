@@ -1231,7 +1231,7 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
                           "unclosed function declaration parameter list");
         else
             diag_fatal_at(parser_peek(p).loc,
-                          "expected `,` or `)` in function declaration parameter list, but found %s",
+                          "expected `,` or `)` in function's declaration parameter list, but found %s",
                           token_to_str(parser_peek(p)));
     }
 
@@ -1463,11 +1463,31 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
 // Translation unit parser
 //
 
+// Returns a fully parsed translation unit.
 TranslUnit parse_transl_unit(Parser *p)
 {
-    TranslUnit _tl = { 0 };
-    print_stmt(stdout, parse_stmt(p), 0);
-    return _tl;
+    TranslUnit tl = { .a = p->a, .decls = NULL, .decls_count = 0 };
+    struct {
+        Decl **items;
+        size_t count;
+        size_t capacity;
+    } decls = { 0 };
+
+    while (!parser_at_eof(p))
+        da_append(&decls, parse_decl(p, DECL_CTX_FILE),
+                  "could not allocate temporary memory to parse translation unit");
+    if (!parser_at_eof(p))
+        diag_fatal_at(parser_peek(p).loc,
+                      "unexpected external-declaration encountered in translation unit");
+
+    if (decls.count > 0) {
+        tl.decls_count = decls.count;
+        tl.decls = arena_alloc_many(p->a, Decl *, decls.count);
+        memcpy(tl.decls, decls.items, decls.count * sizeof(Decl *));
+    }
+    /* print_stmt(stdout, parse_stmt(p), 0); */
+    free(decls.items);
+    return tl;
 }
 
 //
