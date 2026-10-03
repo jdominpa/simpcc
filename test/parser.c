@@ -35,6 +35,7 @@ static void expect_input_consumed(Parser *p, const char *src)
            src, token_to_str(left));
 }
 
+// Tests whether the type given in `src` matches the expected type `expected`.
 static void expect_type(const char *src, const char *expected)
 {
     Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
@@ -52,6 +53,8 @@ static void expect_type(const char *src, const char *expected)
     parser_free(&p);
 }
 
+// Tests whether the expression given in `src` matches the expected expression
+// `expected`.
 static void expect_expr(const char *src, const char *expected)
 {
     Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
@@ -69,12 +72,14 @@ static void expect_expr(const char *src, const char *expected)
     parser_free(&p);
 }
 
+// Tests whether the statement given in `src` matches the expected statement in
+// the file `file_name.
 static void expect_stmt_from_file(const char *src, const char *file_name)
 {
     char path[512];
     // `TEST_DATA_DIR` is passed through `-DTEST_DATA_DIR` at compile time of
     // the unit tests (see nob.c)
-    if (!format_path(path, sizeof path, TEST_DATA_DIR"%s", file_name)) return;
+    if (!format_path(path, sizeof path, TEST_DATA_DIR "%s", file_name)) return;
     char *expected;
     bool pass =
         read_entire_file(&g_test_ctx.test_arena, path, &expected, NULL);
@@ -111,6 +116,39 @@ static void expect_stmt_from_file(const char *src, const char *file_name)
 
     free(got);
     parser_free(&p);
+}
+
+// Parses every declaration with context `ctx` in `src` and compares the result
+// with the `expected` one.
+static void expect_decl_in(DeclContext ctx, const char *src,
+                           const char *expected)
+{
+    Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
+    char *got = NULL;
+    size_t len = 0;
+    FILE *f = open_memstream(&got, &len);
+    while (p.pos < p.token_count - 1) {
+        if (p.pos > 0) fprintf(f, " ");
+        print_decl_compact(f, parse_decl(&p, ctx));
+    }
+    fclose(f);
+
+    EXPECT(len == strlen(expected) && strcmp(got, expected) == 0,
+           "expected declaration `%s` but got `%s`", expected, got);
+    expect_input_consumed(&p, src);
+
+    free(got);
+    parser_free(&p);
+}
+
+static void expect_decl_at_file_scope(const char *src, const char *expected)
+{
+    expect_decl_in(DECL_CTX_FILE, src, expected);
+}
+
+static void expect_decl_at_block_scope(const char *src, const char *expected)
+{
+    expect_decl_in(DECL_CTX_BLOCK, src, expected);
 }
 
 //
@@ -616,6 +654,57 @@ DEFINE_TEST(test_return_statements)
 }
 
 //
+// Declaration tests
+//
+
+DEFINE_TEST(test_basic_declarations)
+{
+    expect_decl_at_file_scope("int x;", "(decl none (x (type int)))");
+    expect_decl_at_file_scope("int x, y;", "(decl none (x (type int)) (y (type int)))");
+    expect_decl_at_file_scope("int x, y = 2;",
+                              "(decl none (x (type int)) (y (type int) 2))");
+    expect_decl_at_file_scope("int *x, y;", "(decl none (x (type int *)) (y (type int)))");
+    expect_decl_at_file_scope("const int x = 1;", "(decl none (x (type const int) 1))");
+    expect_decl_at_file_scope("int a[3];", "(decl none (a (type int[3])))");
+    expect_decl_at_file_scope("int a[3], b;",
+                              "(decl none (a (type int[3])) (b (type int)))");
+}
+
+DEFINE_TEST(test_declaration_storage_class)
+{
+    expect_decl_at_file_scope("static int x;", "(decl static (x (type int)))");
+    expect_decl_at_file_scope("extern int x;", "(decl extern (x (type int)))");
+    // `auto` and `register` are only valid at block scope
+    expect_decl_at_block_scope("register int x;", "(decl register (x (type int)))");
+    expect_decl_at_block_scope("auto int x;", "(decl auto (x (type int)))");
+    expect_decl_at_block_scope("static int x;", "(decl static (x (type int)))");
+    expect_decl_at_block_scope("extern int f(void);", "(decl extern (f (type int(void))))");
+}
+
+DEFINE_TEST(test_typedef_declarations)
+{
+    expect_decl_at_file_scope("typedef int T;", "(decl typedef (T (type int)))");
+    expect_decl_at_file_scope("typedef int A, B;",
+                              "(decl typedef (A (type int)) (B (type int)))");
+    expect_decl_at_file_scope("typedef int T; T x;",
+                              "(decl typedef (T (type int))) (decl none (x (type T)))");
+}
+
+DEFINE_TEST(test_function_declarations)
+{
+    expect_decl_at_file_scope("int f(void);", "(decl none (f (type int(void))))");
+    expect_decl_at_file_scope("int f(int a, int b);",
+                              "(decl none (f (type int(int, int))))");
+    expect_decl_at_file_scope("int f(int, ...);", "(decl none (f (type int(int, ...))))");
+    expect_decl_at_file_scope("int a, f(void);",
+                              "(decl none (a (type int)) (f (type int(void))))");
+    expect_decl_at_file_scope("int *g(int, ...);",
+                              "(decl none (g (type int *(int, ...))))");
+    expect_decl_at_file_scope("int (*fp)(void);",
+                              "(decl none (fp (type int (*)(void))))");
+}
+
+//
 // Fatal error paths
 //
 // These call diag_fatal_at(), which exits the process, so each one runs in a
@@ -687,6 +776,44 @@ DEFINE_TEST(test_nested_types_fatal_paths)
     EXPECT_EXIT(1, { expect_type("int ((*)", NULL); });
 }
 
+DEFINE_TEST(test_declaration_fatal_paths)
+{
+    // A declaration needs at least one declarator
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int (void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int *;", NULL); });
+    // A typedef cannot have an initializer
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int T = 3;", NULL); });
+    // Redefinition within the same declaration
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a;", NULL); });
+    // Redefinition of symbol with different kind
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a(void), a;", NULL); });
+    // Declarator list / declaration syntax
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, ;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a", NULL); });
+    // A typedef cannot have a function body
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int F(void) { }", NULL); });
+    // A function definition cannot be combined with other declarators
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, f(void) { }", NULL); });
+    // `auto` and `register` cannot appear in file scope
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("auto int x;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("register int x;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("auto int f(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("register int f(void);", NULL); });
+}
+
+DEFINE_TEST(test_declaration_block_scope_fatal_paths)
+{
+    // A function definition is only ever an external-declaration.
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("int f(void) { }", NULL); });
+    // A block-scope function declaration takes no explicit storage class other
+    // than `extern`.
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("static int f(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("register int f(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("auto int f(void);", NULL); });
+}
+
 #endif  // _WIN32
 
 int main(void)
@@ -739,6 +866,12 @@ int main(void)
     RUN_TEST(test_jump_statements);
     RUN_TEST(test_return_statements);
 
+    // Declaration tests
+    RUN_TEST(test_basic_declarations);
+    RUN_TEST(test_declaration_storage_class);
+    RUN_TEST(test_typedef_declarations);
+    RUN_TEST(test_function_declarations);
+
     // Fatal path tests
 #ifndef _WIN32
     RUN_TEST(test_void_cast_fatal_paths);
@@ -746,6 +879,8 @@ int main(void)
     RUN_TEST(test_missing_type_specifier_is_fatal);
     RUN_TEST(test_function_types_fatal_paths);
     RUN_TEST(test_nested_types_fatal_paths);
+    RUN_TEST(test_declaration_fatal_paths);
+    RUN_TEST(test_declaration_block_scope_fatal_paths);
 #endif
 
     TEST_SUMMARY();

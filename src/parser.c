@@ -1139,6 +1139,8 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
     return array;
 }
 
+// Returns the type resulting from parsing a function suffix from a declarator
+// with return type `ret`.
 static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
 {
     scope_enter(&p->sc);
@@ -1335,13 +1337,23 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
     return dec;
 }
 
-// declaration := declaration-specifiers init-declarator* ";"
-// declaration-specifiers := (storage-class-specifier |
-//                            type-specifier-qualifier |
-//                            function-specifier)+
+/*
+  Parses a declaration in context `ctx`. The grammar for a declaration is as
+  follows:
+
+  declaration := declaration-specifiers init-declarator* ";"
+  declaration-specifiers := (storage-class-specifier |
+                             type-specifier-qualifier |
+                             function-specifier)+
+*/
 Decl *parse_decl(Parser *p, DeclContext ctx)
 {
     DeclSpec spec = parse_decl_spec(p, DECL_SPEC_DECLARATION);
+    if (ctx == DECL_CTX_FILE &&
+        (spec.storage == STORAGE_AUTO || spec.storage == STORAGE_REGISTER))
+        diag_fatal_at(spec.loc,
+                      "storage-class specifier `%s` is not allowed in external declarations",
+                      spec.storage == STORAGE_AUTO ? "auto" : "register");
     Decl *decl = arena_alloc(p->a, Decl);
     *decl = (Decl) {
         .kind = DECL_DECLARATION,
