@@ -35,6 +35,15 @@ typedef enum {
     DECL_SPEC_PARAM,        // parameter-declaration: `register` and nothing else
 } DeclSpecMode;
 
+// List of parameter symbols of a function declaration. `present` indicates
+// whether the declaration had a parameter list at all (for cases such as
+// `typedef int F(void); F f;`).
+typedef struct {
+    Symbol **syms;
+    size_t sym_count;
+    const Type *owner;  // the `TYPE_FUNC` type node these parameters belong to
+} ParamList;
+
 // Result of parsing a declarator: the type it builds around the base type it
 // was given, plus the identifier it declares. `name` is NULL for an abstract
 // declarator.
@@ -42,6 +51,7 @@ typedef struct {
     Type *ty;
     const char *name;
     Loc name_loc;
+    ParamList params;
 } Declarator;
 
 // Whether a declarator declares an identifier. C's grammar has both declarator
@@ -59,7 +69,7 @@ typedef enum {
 static Expr *parse_expr_bp(Parser *p, uint8_t min_bp);
 static bool is_decl_spec(const Scope *sc, Token t);
 static DeclSpec parse_decl_spec(Parser *p, DeclSpecMode mode);
-static Type *parse_declarator_suffix(Parser *p, Type *base);
+static Type *parse_declarator_suffix(Parser *p, Type *base, ParamList *params);
 static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode);
 
 //
@@ -698,12 +708,26 @@ inline Expr *parse_expr(Parser *p)
 // Statement parser
 //
 
-// Parses a block statement. The closing `}` is consumed by the function.
-static Stmt *parse_block_stmts(Parser *p)
+// Parses a block statement. The closing `}` is consumed by the function. An
+// optional ParamList `params` can be passed in case the block is the body of a
+// function so that the function's parameters are added to the block's scope
+// before parsing its statements.
+static Stmt *parse_block_stmts(Parser *p, const ParamList *params)
 {
     Stmt *s = arena_alloc(p->a, Stmt);
-    s->kind = STMT_BLOCK;
-    s->loc = parser_prev(p).loc;
+    *s = (Stmt) {
+        .kind = STMT_BLOCK,
+        .loc = parser_prev(p).loc,
+        .block = {
+            .stmts = NULL,
+            .stmt_count = 0,
+        },
+    };
+
+    scope_enter(&p->sc);
+    if (params != NULL)
+        for (size_t i = 0; i < params->sym_count; ++i)
+            scope_add_sym(&p->sc, params->syms[i]);
 
     struct {
         Stmt **items;
@@ -722,12 +746,11 @@ static Stmt *parse_block_stmts(Parser *p)
     }
 
     if (stmts.count > 0) {
+        s->block.stmt_count = stmts.count;
         s->block.stmts = arena_alloc_many(p->a, Stmt *, stmts.count);
         memcpy(s->block.stmts, stmts.items, stmts.count * sizeof(Stmt *));
-    } else {
-        s->block.stmts = NULL;
     }
-    s->block.stmt_count = stmts.count;
+    scope_exit(&p->sc);
     free(stmts.items);
     return s;
 }
@@ -822,7 +845,7 @@ Stmt *parse_stmt(Parser *p)
         return s;
     }
     case TK_OBRACE:
-        return parse_block_stmts(p);
+        return parse_block_stmts(p, NULL);
     case TK_SEMI: {
         Stmt *s = arena_alloc(p->a, Stmt);
         s->kind = STMT_NULL;
@@ -1131,7 +1154,7 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
                       "incorrect array size found while parsing array declaration");
     }
 
-    Type *elem = parse_declarator_suffix(p, base);
+    Type *elem = parse_declarator_suffix(p, base, NULL);
     if (elem->kind == TYPE_FUNC)
         diag_fatal_at(array->loc,
                       "array cannot have a function type as its element type");
@@ -1140,15 +1163,19 @@ static Type *parse_declarator_array_suffix(Parser *p, Type *base)
 }
 
 // Returns the type resulting from parsing a function suffix from a declarator
-// with return type `ret`.
-static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
+// with return type `ret`. When `out` is not `NULL`, the symbols of the function
+// suffix's parameter list are stored in `out`.
+static Type *parse_declarator_func_suffix(Parser *p, Type *ret, ParamList *out)
 {
     scope_enter(&p->sc);
     Type *func = arena_alloc(p->a, Type);
     *func = (Type) {
         .kind = TYPE_FUNC,
         .loc = parser_prev(p).loc,
-        .func = { .ret = ret, .arg_count = 0, .args = NULL, .is_variadic = false }
+        .func = { .ret = ret,
+                  .arg_count = 0,
+                  .args = NULL,
+                  .is_variadic = false }
     };
 
     struct {
@@ -1156,6 +1183,11 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
         size_t count;
         size_t capacity;
     } args = { 0 };
+    struct {
+        Symbol **items;
+        size_t count;
+        size_t capacity;
+    } syms = { 0 };
 
     while (!parser_at_eof(p) && !parser_check(p, TK_CPAREN)) {
         // Variadic arguments
@@ -1204,8 +1236,9 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
 
         // Add declarator name if present to the function's parameter list
         // scope.
+        Symbol *sym = NULL;
         if (dec.name != NULL) {
-            Symbol *sym = arena_alloc(p->a, Symbol);
+            sym = arena_alloc(p->a, Symbol);
             *sym = (Symbol) {
                 .kind = SYMBOL_VAR,
                 .ns = NS_VAR,
@@ -1218,6 +1251,8 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
 
         da_append(&args, param,
                   "could not allocate temporary memory to parse function declaration");
+        da_append(&syms, sym,
+                  "could not allocate temporary memory to parse function declaration");
         if (!parser_eat(p, TK_COMMA)) break;
         if (parser_check(p, TK_CPAREN))
             diag_fatal_at(parser_peek(p).loc,
@@ -1225,6 +1260,7 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
     }
     if (!parser_eat(p, TK_CPAREN)) {
         free(args.items);
+        free(syms.items);
         // TODO: handle error instead of crashing
         if (parser_at_eof(p))
             diag_fatal_at(func->loc,
@@ -1244,9 +1280,19 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
         memcpy(func->func.args, args.items, args.count * sizeof(Type *));
     }
     free(args.items);
+    if (out != NULL) {
+        out->sym_count = syms.count;
+        out->syms = NULL;
+        out->owner = func;
+        if (syms.count > 0) {
+            out->syms = arena_alloc_many(p->a, Symbol *, syms.count);
+            memcpy(out->syms, syms.items, syms.count * sizeof(Symbol *));
+        }
+    }
+    free(syms.items);
     // Suffixes chain left to right with the leftmost outermost, so whatever
     // follows the parameter list is what the function returns.
-    Type *ret_ty = parse_declarator_suffix(p, ret);
+    Type *ret_ty = parse_declarator_suffix(p, ret, NULL);
     if (ret_ty->kind == TYPE_ARRAY)
         diag_fatal_at(func->loc, "function cannot return an array type");
     if (ret_ty->kind == TYPE_FUNC)
@@ -1255,15 +1301,18 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret)
     return func;
 }
 
-// Parses the suffix after a declarator.
-static Type *parse_declarator_suffix(Parser *p, Type *base)
+// Parses the suffix after a declarator. The optional ParamList `params`, if
+// present, is used to store the symbols of a function suffix's parameter list.
+static Type *parse_declarator_suffix(Parser *p, Type *base, ParamList *params)
 {
     if (parser_eat(p, TK_OBRACK)) return parse_declarator_array_suffix(p, base);
-    if (parser_eat(p, TK_OPAREN)) return parse_declarator_func_suffix(p, base);
+    if (parser_eat(p, TK_OPAREN)) return parse_declarator_func_suffix(p, base, params);
     return base;
 }
 
-// Parses a single declarator with base type `base`.
+// Parses a single declarator with base type `base`. `mode` indicates whether
+// the declarator should: declare an identifier, not declare an identifier, or
+// any of the two previous options.
 static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
 {
     Declarator dec = { 0 };
@@ -1289,12 +1338,12 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
             if (mode == DECLARATOR_NAMED)
                 diag_fatal_at(parser_prev(p).loc,
                               "expected declarator name or nested declarator but found function parameter list");
-            dec.ty = parse_declarator_func_suffix(p, dec.ty);
+            dec.ty = parse_declarator_func_suffix(p, dec.ty, &dec.params);
         } else {
             // Nested declarator
             size_t nested_dec_start = p->pos;
             p->pos = parser_skip_balanced_parens(p, nested_dec_start);
-            dec.ty = parse_declarator_suffix(p, dec.ty);
+            dec.ty = parse_declarator_suffix(p, dec.ty, &dec.params);
             size_t dec_end = p->pos;
 
             p->pos = nested_dec_start;
@@ -1306,9 +1355,13 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
                 UNREACHABLE("parser_expect is currently nonreturnable");
             p->pos = dec_end;
 
-            dec.name = nested.name;
-            dec.name_loc = nested.name_loc;
-            dec.ty = nested.ty;
+            dec = (Declarator) {
+                .name = nested.name,
+                .name_loc = nested.name_loc,
+                .params = nested.params.owner == nested.ty ? nested.params
+                                                           : dec.params,
+                .ty = nested.ty,
+            };
         }
     } else {
         // Declarator name
@@ -1331,7 +1384,7 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
             }
             break;
         }
-        dec.ty = parse_declarator_suffix(p, dec.ty);
+        dec.ty = parse_declarator_suffix(p, dec.ty, &dec.params);
     }
 
     return dec;
@@ -1369,36 +1422,6 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
 
     while (!parser_at_eof(p) && !parser_check(p, TK_SEMI)) {
         Declarator dec = parse_declarator(p, spec.base, DECLARATOR_NAMED);
-
-        // Check if we are parsing a function-definition.
-        if (dec.ty->kind == TYPE_FUNC && parser_check(p, TK_OBRACE)) {
-            Loc brace_loc = parser_peek(p).loc;
-            free(declarators.items);
-            if (ctx == DECL_CTX_BLOCK)
-                diag_fatal_at(brace_loc,
-                              "nested definition of function `%s` is not allowed", dec.name);
-            if (spec.storage == STORAGE_TYPEDEF)
-                diag_fatal_at(brace_loc,
-                              "a typedef declaration cannot have a function body");
-            if (declarators.count > 0)
-                diag_fatal_at(brace_loc,
-                              "a function definition cannot be combined with other declarators");
-            TODO("parse_decl: implement function definitions");
-        }
-        // Function declared at block scope takes no explicit storage class
-        // other than `extern`. A typedef naming a function type is a typedef,
-        // not a declaration of a function, so it is exempt.
-        if (ctx == DECL_CTX_BLOCK
-            && dec.ty->kind == TYPE_FUNC
-            && spec.storage != STORAGE_NONE
-            && spec.storage != STORAGE_EXTERN
-            && spec.storage != STORAGE_TYPEDEF) {
-            free(declarators.items);
-            diag_fatal_at(dec.name_loc,
-                          "function `%s` declared at block scope cannot have a storage class other than `extern`",
-                          dec.name);
-        }
-
         SymbolKind sym_kind = spec.storage == STORAGE_TYPEDEF ? SYMBOL_TYPEDEF
                               : dec.ty->kind == TYPE_FUNC     ? SYMBOL_FUNC
                                                               : SYMBOL_VAR;
@@ -1417,6 +1440,45 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
             .ty = dec.ty,
         };
         scope_add_sym(&p->sc, init_dec.sym);
+
+        // Check if we are parsing a function-definition.
+        if (dec.ty->kind == TYPE_FUNC && parser_eat(p, TK_OBRACE)) {
+            free(declarators.items);
+            Loc brace_loc = parser_prev(p).loc;
+            if (ctx == DECL_CTX_BLOCK)
+                diag_fatal_at(brace_loc,
+                              "nested definition of function `%s` is not allowed",
+                              dec.name);
+            if (spec.storage == STORAGE_TYPEDEF)
+                diag_fatal_at(brace_loc,
+                              "a typedef declaration cannot have a function body");
+            if (declarators.count > 0)
+                diag_fatal_at(brace_loc,
+                              "a function definition cannot be combined with other declarators");
+            for (size_t i = 0; i < dec.params.sym_count; ++i)
+                if (dec.params.syms[i] == NULL)
+                    diag_fatal_at(dec.ty->func.args[i]->loc,
+                                  "all parameters in a function definition must be named parameters");
+            Stmt *body = parse_block_stmts(p, &dec.params);
+            *decl = (Decl) {
+                .kind = DECL_FUNC_DEF,
+                .loc = spec.loc,
+                .func = { .init_dec = init_dec,
+                          .params = dec.params.syms,
+                          .param_count = dec.params.sym_count,
+                          .body = body },
+            };
+            return decl;
+        }
+        // Function declared at block scope takes no explicit storage class
+        // other than `extern`. A typedef naming a function type is a typedef,
+        // not a declaration of a function, so it is exempt.
+        if (ctx == DECL_CTX_BLOCK && dec.ty->kind == TYPE_FUNC && spec.storage != STORAGE_NONE && spec.storage != STORAGE_EXTERN && spec.storage != STORAGE_TYPEDEF) {
+            free(declarators.items);
+            diag_fatal_at(dec.name_loc,
+                          "function `%s` declared at block scope cannot have a storage class other than `extern`",
+                          dec.name);
+        }
 
         // Declarator initialization
         if (parser_eat(p, TK_EQ)) {

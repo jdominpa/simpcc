@@ -736,7 +736,7 @@ static void print_decl_ctx(PrintCtx *ctx, const Decl *decl)
         for (size_t i = 0; i < decl->func.param_count; ++i) {
             char label[32];
             snprintf(label, sizeof label, "param %zu", i);
-            print_text_field(ctx, label, decl->func.param_names[i]);
+            print_text_field(ctx, label, decl->func.params[i]->name);
         }
         print_stmt_field(ctx, "body", decl->func.body);
         fprintf(ctx->out, ")");

@@ -8,6 +8,39 @@
 #include "common.h"
 #include "diag.h"
 
+typedef struct Symbol Symbol;
+typedef struct Type Type;
+typedef struct Expr Expr;
+typedef struct Stmt Stmt;
+typedef struct Decl Decl;
+
+//
+// Symbols (see also scope.h)
+//
+
+typedef enum {
+    SYMBOL_TYPEDEF,
+    SYMBOL_VAR,
+    SYMBOL_FUNC,
+    SYMBOL_ENUM,
+    SYMBOL_CONST,
+    SYMBOL_COUNT,
+} SymbolKind;
+
+typedef enum {
+    NS_VAR,
+    NS_TAG,
+} Namespace;
+
+struct Symbol {
+    SymbolKind kind;
+    Namespace ns;
+    Loc loc;
+    const char *name;
+    Type *ty;
+    uint32_t depth;
+};
+
 //
 // Types
 //
@@ -45,7 +78,6 @@ typedef enum {
     SIGN_UNSIGNED,
 } TypeSign;
 
-typedef struct Type Type;
 struct Type {
     TypeKind kind;
     Loc loc;
@@ -151,10 +183,6 @@ typedef enum {
     EXPR_COUNT,
 } ExprKind;
 
-// NOTE: `Symbol` is defined in scope.h which creates an inclusion cycle with
-// this file. Forward declare it here to be able to use it.
-typedef struct Symbol Symbol;
-typedef struct Expr Expr;
 struct Expr {
     ExprKind kind;
     Loc loc;
@@ -242,8 +270,6 @@ typedef enum {
     STMT_COUNT,
 } StmtKind;
 
-typedef struct Stmt Stmt;
-typedef struct Decl Decl;
 struct Stmt {
     StmtKind kind;
     Loc loc;
@@ -336,7 +362,7 @@ struct Decl {
         } _union;
         struct {
             InitDeclarator init_dec;
-            const char **param_names;
+            Symbol **params;
             size_t param_count;
             Stmt *body;
         } func;
