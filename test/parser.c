@@ -688,6 +688,31 @@ DEFINE_TEST(test_typedef_declarations)
                               "(decl typedef (A (type int)) (B (type int)))");
     expect_decl_at_file_scope("typedef int T; T x;",
                               "(decl typedef (T (type int))) (decl none (x (type T)))");
+    // Repeating a typedef with the same type is legal
+    expect_decl_at_file_scope("typedef int T; typedef int T;",
+                              "(decl typedef (T (type int))) (decl typedef (T (type int)))");
+}
+
+DEFINE_TEST(test_function_redeclarations)
+{
+    // A function declaration may be repeated as long as the types match and at
+    // most one of them is a definition.
+    expect_decl_at_file_scope("int f(void); int f(void);",
+                              "(decl none (f (type int(void)))) (decl none (f (type int(void))))");
+    expect_decl_at_file_scope("int f(void); int f(void) { return 1; }",
+                              "(decl none (f (type int(void)))) (func_def (f (type int(void))) (block (return 1)))");
+    expect_decl_at_file_scope("int f(void) { return 1; } int f(void);",
+                              "(func_def (f (type int(void))) (block (return 1))) (decl none (f (type int(void))))");
+    expect_decl_at_file_scope("int f(void); int f(void) { return 1; } int f(void);",
+                              "(decl none (f (type int(void)))) (func_def (f (type int(void))) (block (return 1))) (decl none (f (type int(void))))");
+    // A typedef is an alias and not a distinct type. The qualifiers of the
+    // typedef and of the use site both count.
+    expect_decl_at_file_scope("typedef int T; T f(void); int f(void) { return 1; }",
+                              "(decl typedef (T (type int))) (decl none (f (type T(void)))) (func_def (f (type int(void))) (block (return 1)))");
+    expect_decl_at_file_scope("typedef int I; const I f(void); const int f(void);",
+                              "(decl typedef (I (type int))) (decl none (f (type const I(void)))) (decl none (f (type const int(void))))");
+    expect_decl_at_file_scope("typedef int A; typedef A B; B f(void); int f(void);",
+                              "(decl typedef (A (type int))) (decl typedef (B (type A))) (decl none (f (type B(void)))) (decl none (f (type int(void))))");
 }
 
 DEFINE_TEST(test_function_declarations)
@@ -702,6 +727,27 @@ DEFINE_TEST(test_function_declarations)
                               "(decl none (g (type int *(int, ...))))");
     expect_decl_at_file_scope("int (*fp)(void);",
                               "(decl none (fp (type int (*)(void))))");
+}
+
+DEFINE_TEST(test_function_definitions)
+{
+
+    expect_decl_at_file_scope("int f(void) {}",
+                              "(func_def (f (type int(void))) (block))");
+    expect_decl_at_file_scope("int f(int a) { return a; }",
+                              "(func_def (f (type int(int))) a (block (return a)))");
+    expect_decl_at_file_scope("int f(int a, int b) { return a + b; }",
+                              "(func_def (f (type int(int, int))) a b (block (return (binop + a b))))");
+    // Function name can be shadowed by its own parameter
+    expect_decl_at_file_scope("void f(int f) {}",
+                              "(func_def (f (type void(int))) f (block))");
+    // Nested blocks can shadow function parameters
+    expect_decl_at_file_scope("void f(int a) { { int a; } }",
+                              "(func_def (f (type void(int))) a (block (block (decl none (a (type int))))))");
+    // Nested declarator: (int a) -> void (*)(int b). `a` should be the paramter
+    // in scope in the function body
+    expect_decl_at_file_scope("void (*f(int a))(int b) { return 0; }",
+                              "(func_def (f (type void (*(int))(int))) a (block (return 0)))");
 }
 
 //
@@ -784,8 +830,20 @@ DEFINE_TEST(test_declaration_fatal_paths)
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int *;", NULL); });
     // A typedef cannot have an initializer
     EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int T = 3;", NULL); });
-    // Redefinition within the same declaration
+    // Redeclaration within the same declaration
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a;", NULL); });
+    // Redeclaration of function with different signature
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(void); int f(int)", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(int); int f(int, ...)", NULL); });
+    // Each part of a type is compared: signedness, qualifiers, pointee, and
+    // both the presence and the value of an array bound.
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("char c(void); signed char c(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(void); const int f(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("void f(int *); void f(char *);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("void f(int (*)[3]); void f(int (*)[4]);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("void f(int (*)[]); void f(int (*)[3]);", NULL); });
+    // Repeating a typedef with a different type
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int T; typedef char T;", NULL); });
     // Redefinition of symbol with different kind
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a(void);", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int a(void), a;", NULL); });
@@ -801,17 +859,31 @@ DEFINE_TEST(test_declaration_fatal_paths)
     EXPECT_EXIT(1, { expect_decl_at_file_scope("register int x;", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_file_scope("auto int f(void);", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_file_scope("register int f(void);", NULL); });
+    // `inline` and `_Noreturn` can only be used in function
+    // declarations/definitions
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("inline int x;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("_Noreturn int x;", NULL); });
 }
 
 DEFINE_TEST(test_declaration_block_scope_fatal_paths)
 {
-    // A function definition is only ever an external-declaration.
+    // A function definition is only ever an external-declaration
     EXPECT_EXIT(1, { expect_decl_at_block_scope("int f(void) { }", NULL); });
     // A block-scope function declaration takes no explicit storage class other
-    // than `extern`.
+    // than `extern`
     EXPECT_EXIT(1, { expect_decl_at_block_scope("static int f(void);", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_block_scope("register int f(void);", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_block_scope("auto int f(void);", NULL); });
+}
+
+DEFINE_TEST(test_function_definition_fatal_paths)
+{
+    // Unnamed parameters are not allowed in function definitions
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("void f(int) {}", NULL); });
+    // Parameters cannot be shadowed in the function body
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(int a) { int a; }", NULL); });
+    // Redefinition of function
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(void) { return 1; } int f(void) { return 2; }",NULL); });
 }
 
 #endif  // _WIN32
@@ -870,7 +942,9 @@ int main(void)
     RUN_TEST(test_basic_declarations);
     RUN_TEST(test_declaration_storage_class);
     RUN_TEST(test_typedef_declarations);
+    RUN_TEST(test_function_redeclarations);
     RUN_TEST(test_function_declarations);
+    RUN_TEST(test_function_definitions);
 
     // Fatal path tests
 #ifndef _WIN32
@@ -881,6 +955,7 @@ int main(void)
     RUN_TEST(test_nested_types_fatal_paths);
     RUN_TEST(test_declaration_fatal_paths);
     RUN_TEST(test_declaration_block_scope_fatal_paths);
+    RUN_TEST(test_function_definition_fatal_paths);
 #endif
 
     TEST_SUMMARY();
