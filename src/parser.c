@@ -41,7 +41,7 @@ typedef enum {
 typedef struct {
     Symbol **syms;
     size_t sym_count;
-    const Type *owner;  // the `TYPE_FUNC` type node these parameters belong to
+    const Type *type_sig;  // the `TYPE_FUNC` type signature the parameter list belongs to
 } ParamList;
 
 // Result of parsing a declarator: the type it builds around the base type it
@@ -187,8 +187,8 @@ static bool is_type_qual(Token t)
     return token_equal(t, "const") || token_equal(t, "volatile") || token_equal(t, "restrict");
 }
 
-// Parses a list of consecutive type qualifiers. Returns an bitmap specifying
-// the qualifiers present according to the `TypeQual` enum.
+// Parses a list of consecutive type qualifiers. Returns a bitmap specifying the
+// qualifiers present according to the `TypeQual` enum.
 static uint8_t parse_type_quals(Parser *p)
 {
     uint8_t quals = 0;
@@ -727,7 +727,7 @@ static Stmt *parse_block_stmts(Parser *p, const ParamList *params)
     scope_enter(&p->sc);
     if (params != NULL)
         for (size_t i = 0; i < params->sym_count; ++i)
-            scope_add_sym(&p->sc, params->syms[i]);
+            scope_add_sym(p->a, &p->sc, *params->syms[i]);
 
     struct {
         Stmt **items;
@@ -1237,17 +1237,14 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret, ParamList *out)
         // Add declarator name if present to the function's parameter list
         // scope.
         Symbol *sym = NULL;
-        if (dec.name != NULL) {
-            sym = arena_alloc(p->a, Symbol);
-            *sym = (Symbol) {
+        if (dec.name != NULL)
+            sym = scope_add_sym(p->a, &p->sc, (Symbol) {
                 .kind = SYMBOL_VAR,
                 .ns = NS_VAR,
                 .loc = dec.name_loc,
                 .name = dec.name,
                 .ty = param,
-            };
-            scope_add_sym(&p->sc, sym);
-        }
+            });
 
         da_append(&args, param,
                   "could not allocate temporary memory to parse function declaration");
@@ -1283,7 +1280,7 @@ static Type *parse_declarator_func_suffix(Parser *p, Type *ret, ParamList *out)
     if (out != NULL) {
         out->sym_count = syms.count;
         out->syms = NULL;
-        out->owner = func;
+        out->type_sig = func;
         if (syms.count > 0) {
             out->syms = arena_alloc_many(p->a, Symbol *, syms.count);
             memcpy(out->syms, syms.items, syms.count * sizeof(Symbol *));
@@ -1358,7 +1355,7 @@ static Declarator parse_declarator(Parser *p, Type *base, DeclaratorMode mode)
             dec = (Declarator) {
                 .name = nested.name,
                 .name_loc = nested.name_loc,
-                .params = nested.params.owner == nested.ty ? nested.params
+                .params = nested.params.type_sig == nested.ty ? nested.params
                                                            : dec.params,
                 .ty = nested.ty,
             };
@@ -1431,19 +1428,20 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
             .name_loc = dec.name_loc,
             .init = NULL,
         };
-        init_dec.sym = arena_alloc(p->a, Symbol);
-        *init_dec.sym = (Symbol) {
+        init_dec.sym = scope_add_sym(p->a, &p->sc, (Symbol) {
             .kind = sym_kind,
             .ns = NS_VAR,
             .loc = dec.name_loc,
             .name = dec.name,
             .ty = dec.ty,
-        };
-        scope_add_sym(&p->sc, init_dec.sym);
+            // Store if symbol corresponds to an initialized object or a
+            // function definition
+            .is_def = dec.ty->kind == TYPE_FUNC ? parser_check(p, TK_OBRACE)
+                                                : parser_check(p, TK_EQ),
+        });
 
-        // Check if we are parsing a function-definition.
+        // Check if we are parsing a function-definition
         if (dec.ty->kind == TYPE_FUNC && parser_eat(p, TK_OBRACE)) {
-            free(declarators.items);
             Loc brace_loc = parser_prev(p).loc;
             if (ctx == DECL_CTX_BLOCK)
                 diag_fatal_at(brace_loc,
@@ -1455,6 +1453,10 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
             if (declarators.count > 0)
                 diag_fatal_at(brace_loc,
                               "a function definition cannot be combined with other declarators");
+            if (dec.params.type_sig != dec.ty)
+                diag_fatal_at(brace_loc,
+                              "a function definition must declare its own parameter list");
+            free(declarators.items);
             for (size_t i = 0; i < dec.params.sym_count; ++i)
                 if (dec.params.syms[i] == NULL)
                     diag_fatal_at(dec.ty->func.args[i]->loc,
@@ -1470,15 +1472,27 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
             };
             return decl;
         }
+
         // Function declared at block scope takes no explicit storage class
         // other than `extern`. A typedef naming a function type is a typedef,
         // not a declaration of a function, so it is exempt.
-        if (ctx == DECL_CTX_BLOCK && dec.ty->kind == TYPE_FUNC && spec.storage != STORAGE_NONE && spec.storage != STORAGE_EXTERN && spec.storage != STORAGE_TYPEDEF) {
+        if (ctx == DECL_CTX_BLOCK &&
+            dec.ty->kind == TYPE_FUNC &&
+            spec.storage != STORAGE_NONE &&
+            spec.storage != STORAGE_EXTERN &&
+            spec.storage != STORAGE_TYPEDEF) {
             free(declarators.items);
             diag_fatal_at(dec.name_loc,
                           "function `%s` declared at block scope cannot have a storage class other than `extern`",
                           dec.name);
         }
+
+        // `inline` and `_Noreturn` can only be used in function
+        // declarations/definitions
+        if (dec.ty->kind != TYPE_FUNC && (spec.is_inline || spec.is_noreturn))
+            diag_fatal_at(spec.loc,
+                          "`%s` specifier is only allowed in function declarations and function definitions",
+                          spec.is_inline ? "inline" : "_Noreturn");
 
         // Declarator initialization
         if (parser_eat(p, TK_EQ)) {
@@ -1538,9 +1552,6 @@ TranslUnit parse_transl_unit(Parser *p)
     while (!parser_at_eof(p))
         da_append(&decls, parse_decl(p, DECL_CTX_FILE),
                   "could not allocate temporary memory to parse translation unit");
-    if (!parser_at_eof(p))
-        diag_fatal_at(parser_peek(p).loc,
-                      "unexpected external-declaration encountered in translation unit");
 
     if (decls.count > 0) {
         tl.decls_count = decls.count;

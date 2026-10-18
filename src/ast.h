@@ -36,9 +36,10 @@ struct Symbol {
     SymbolKind kind;
     Namespace ns;
     Loc loc;
+    uint32_t depth;
     const char *name;
     Type *ty;
-    uint32_t depth;
+    bool is_def;  // object with an initializer or function definition
 };
 
 //

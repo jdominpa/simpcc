@@ -1,12 +1,64 @@
 #include "scope.h"
 
 #include <assert.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
 
+#include "ast_print.h"
 #include "common.h"
-#include "diag.h"
+
+// TODO: move this function to a more appropriate module.
+// Checks whether the two types `ty_1` and `ty_2` are the same type.
+static bool type_equal(const Type *ty_1, const Type *ty_2)
+{
+    if (ty_1->quals != ty_2->quals) return false;
+    // Unwrap typedef aliases
+    while (ty_1->kind == TYPE_NAMED) ty_1 = ty_1->named.ty;
+    while (ty_2->kind == TYPE_NAMED) ty_2 = ty_2->named.ty;
+    if (ty_1->kind != ty_2->kind) return false;
+
+    static_assert(TYPE_COUNT == 17, "type_equal: `TYPE_COUNT` value has changed");
+    switch (ty_1->kind) {
+    case TYPE_VOID:
+    case TYPE_BOOL:
+    case TYPE_CHAR:
+    case TYPE_SHORT:
+    case TYPE_INT:
+    case TYPE_LONG:
+    case TYPE_FLOAT:
+    case TYPE_DOUBLE:
+    case TYPE_LDOUBLE:
+        return ty_1->sign == ty_2->sign;
+    case TYPE_ENUM:
+        TODO("type_equal: implement `TYPE_ENUM` type comparison");
+    case TYPE_PTR:
+        return type_equal(ty_1->ptr.base, ty_2->ptr.base);
+    case TYPE_ARRAY:
+        if (ty_1->array.has_size != ty_2->array.has_size ||
+            (ty_1->array.has_size && ty_1->array.size != ty_2->array.size))
+            return false;
+        return type_equal(ty_1->array.base, ty_2->array.base);
+    case TYPE_FUNC:
+        if (ty_1->func.arg_count != ty_2->func.arg_count ||
+            ty_1->func.is_variadic != ty_2->func.is_variadic ||
+            !type_equal(ty_1->func.ret, ty_2->func.ret))
+            return false;
+        for (size_t i = 0; i < ty_1->func.arg_count; ++i)
+            if (!type_equal(ty_1->func.args[i], ty_2->func.args[i]))
+                return false;
+        return true;
+    case TYPE_VLA:
+        TODO("type_equal: implement `TYPE_VLA` type comparison");
+    case TYPE_STRUCT:
+        TODO("type_equal: implement `TYPE_STRUCT` type comparison");
+    case TYPE_UNION:
+        TODO("type_equal: implement `TYPE_UNION` type comparison");
+    case TYPE_NAMED:
+        UNREACHABLE("type_equal: typedef aliases are unwrapped above");
+    case TYPE_COUNT:
+        break;
+    }
+    UNREACHABLE("type_equal");
+}
 
 // Enters a new scope inside the current one.
 void scope_enter(Scope *sc)
@@ -38,25 +90,37 @@ void scope_free(Scope *sc)
 
 // Adds the symbol `sym` to the scope `sc`. The depth of `sym` gets set to the
 // current depth of `sc`.
-void scope_add_sym(Scope *sc, Symbol *sym)
+Symbol *scope_add_sym(Arena *a, Scope *sc, Symbol sym)
 {
-    sym->depth = sc->depth;
+    sym.depth = sc->depth;
     for (size_t i = sc->count; i-- > 0;) {
         if (sc->items[i]->depth < sc->depth) break;
-        if (sc->items[i]->ns == sym->ns &&
-            strcmp(sc->items[i]->name, sym->name) == 0) {
-            // TODO: check redefinition of symbol with different type once we
-            // have real type comparison
-            if (sc->items[i]->kind != sym->kind)
-                diag_fatal_at(sym->loc,
+        if (sc->items[i]->ns == sym.ns &&
+            strcmp(sc->items[i]->name, sym.name) == 0) {
+            if (sc->items[i]->kind != sym.kind) {
+                diag_fatal_at(sym.loc,
                               "redefinition of symbol `%s` as a different kind of symbol",
-                              sym->name);
-            else
-                diag_fatal_at(sym->loc, "redefinition of symbol `%s`",
-                              sym->name);
+                              sym.name);
+            } else if (!type_equal(sc->items[i]->ty, sym.ty)) {
+                diag_fatal_at(sym.loc,
+                              "redefinition of symbol `%s` with a different type: `%s` vs `%s`",
+                              sym.name, TYPE_TO_STR(sc->items[i]->ty), TYPE_TO_STR(sym.ty));
+            } else {
+                if (sym.kind == SYMBOL_TYPEDEF) return sc->items[i];
+                if (sym.kind == SYMBOL_FUNC &&
+                    !(sc->items[i]->is_def && sym.is_def)) {
+                    sc->items[i]->is_def |= sym.is_def;
+                    return sc->items[i];
+                }
+                diag_fatal_at(sym.loc, "redefinition of symbol `%s`",
+                              sym.name);
+            }
         }
     }
-    da_append(sc, sym, "could not append symbol to current scope");
+    Symbol *arena_sym = arena_alloc(a, Symbol);
+    *arena_sym = sym;
+    da_append(sc, arena_sym, "could not append symbol to current scope");
+    return arena_sym;
 }
 
 // Looks up a symbol `name` with namespace `ns`. Returns NULL if no such symbol
