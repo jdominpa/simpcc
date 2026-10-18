@@ -124,6 +124,7 @@ static void expect_decl_in(DeclContext ctx, const char *src,
                            const char *expected)
 {
     Parser p = parser_init_from_src(&g_test_ctx.test_arena, src);
+    if (ctx == DECL_CTX_BLOCK) scope_enter(&p.sc);
     char *got = NULL;
     size_t len = 0;
     FILE *f = open_memstream(&got, &len);
@@ -693,6 +694,18 @@ DEFINE_TEST(test_typedef_declarations)
                               "(decl typedef (T (type int))) (decl typedef (T (type int)))");
 }
 
+DEFINE_TEST(test_basic_redeclarations)
+{
+    expect_decl_at_file_scope("int x; int x;",
+                              "(decl none (x (type int))) (decl none (x (type int)))");
+    expect_decl_at_file_scope("int x = 1; int x;",
+                              "(decl none (x (type int) 1)) (decl none (x (type int)))");
+    expect_decl_at_file_scope("int x; int x = 1;",
+                              "(decl none (x (type int))) (decl none (x (type int) 1))");
+    expect_decl_at_block_scope("extern int x; extern int x;",
+                               "(decl extern (x (type int))) (decl extern (x (type int)))");
+}
+
 DEFINE_TEST(test_function_redeclarations)
 {
     // A function declaration may be repeated as long as the types match and at
@@ -830,8 +843,11 @@ DEFINE_TEST(test_declaration_fatal_paths)
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int *;", NULL); });
     // A typedef cannot have an initializer
     EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int T = 3;", NULL); });
-    // Redeclaration within the same declaration
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a;", NULL); });
+    // Redeclaration of a declarator with initialization in both of its
+    // declarations
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x = 1, x = 2;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x = 1; int x = 2;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x; int x = 1; int x = 2;", NULL); });
     // Redeclaration of function with different signature
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(void); int f(int)", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_file_scope("int f(int); int f(int, ...)", NULL); });
@@ -867,6 +883,9 @@ DEFINE_TEST(test_declaration_fatal_paths)
 
 DEFINE_TEST(test_declaration_block_scope_fatal_paths)
 {
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("int x, x;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("int x; int x;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_block_scope("extern int x; int x;", NULL); });
     // A function definition is only ever an external-declaration
     EXPECT_EXIT(1, { expect_decl_at_block_scope("int f(void) { }", NULL); });
     // A block-scope function declaration takes no explicit storage class other
@@ -942,6 +961,7 @@ int main(void)
     RUN_TEST(test_basic_declarations);
     RUN_TEST(test_declaration_storage_class);
     RUN_TEST(test_typedef_declarations);
+    RUN_TEST(test_basic_redeclarations);
     RUN_TEST(test_function_redeclarations);
     RUN_TEST(test_function_declarations);
     RUN_TEST(test_function_definitions);
