@@ -437,7 +437,13 @@ static void print_type_ctx(PrintCtx *ctx, const Type *ty)
     case TYPE_UNION:
         TODO("print_type_ctx: implement `TYPE_UNION`");
     case TYPE_NAMED:
-        TODO("print_type_ctx: implement `TYPE_NAMED`");
+        fprintf(ctx->out, "(named_type");
+        print_loc(ctx, ty->loc);
+        print_type_quals_field(ctx, ty->quals);
+        print_text_field(ctx, "name", ty->named.name);
+        print_type_field(ctx, "type", ty->named.ty);
+        fprintf(ctx->out, ")");
+        break;
     case TYPE_COUNT:
         UNREACHABLE("print_type_ctx");
     }
