@@ -242,26 +242,6 @@ DEFINE_TEST(test_redeclaration_reuses_one_symbol)
 
 #ifndef _WIN32
 
-DEFINE_TEST(test_redefinition_in_same_scope_is_fatal)
-{
-    Scope sc = { 0 };
-    scope_add_sym(&g_test_ctx.test_arena, &sc, (Symbol) {
-        .kind = SYMBOL_VAR,
-        .ns = NS_VAR,
-        .name = "a",
-        .ty = primitive_type(TYPE_INT),
-    });
-    EXPECT_EXIT(1, {
-        scope_add_sym(&g_test_ctx.test_arena, &sc, (Symbol) {
-            .kind = SYMBOL_VAR,
-            .ns = NS_VAR,
-            .name = "a",
-            .ty = primitive_type(TYPE_INT),
-        });
-    });
-    scope_free(&sc);
-}
-
 DEFINE_TEST(test_redefinition_as_different_kind_is_fatal)
 {
     Scope sc = { 0 };
@@ -363,7 +343,6 @@ int main(void)
     RUN_TEST(test_redeclaration_reuses_one_symbol);
 
 #ifndef _WIN32
-    RUN_TEST(test_redefinition_in_same_scope_is_fatal);
     RUN_TEST(test_redefinition_as_different_kind_is_fatal);
     RUN_TEST(test_legal_redeclarations_are_not_fatal);
     RUN_TEST(test_second_function_definition_is_fatal);

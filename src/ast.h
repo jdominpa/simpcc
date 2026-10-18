@@ -40,6 +40,7 @@ struct Symbol {
     const char *name;
     Type *ty;
     bool is_def;  // object with an initializer or function definition
+    bool is_extern;  // object with `extern` storage specifier
 };
 
 //

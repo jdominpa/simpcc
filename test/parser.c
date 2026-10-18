@@ -845,15 +845,15 @@ DEFINE_TEST(test_declaration_fatal_paths)
     // Repeating a typedef with a different type
     EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int T; typedef char T;", NULL); });
     // Redefinition of symbol with different kind
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, a(void);", NULL); });
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a(void), a;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x, x(void);", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x(void), x;", NULL); });
     // Declarator list / declaration syntax
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, ;", NULL); });
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x, ;", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x", NULL); });
     // A typedef cannot have a function body
     EXPECT_EXIT(1, { expect_decl_at_file_scope("typedef int F(void) { }", NULL); });
     // A function definition cannot be combined with other declarators
-    EXPECT_EXIT(1, { expect_decl_at_file_scope("int a, f(void) { }", NULL); });
+    EXPECT_EXIT(1, { expect_decl_at_file_scope("int x, f(void) { }", NULL); });
     // `auto` and `register` cannot appear in file scope
     EXPECT_EXIT(1, { expect_decl_at_file_scope("auto int x;", NULL); });
     EXPECT_EXIT(1, { expect_decl_at_file_scope("register int x;", NULL); });

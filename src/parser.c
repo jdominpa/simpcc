@@ -1438,6 +1438,7 @@ Decl *parse_decl(Parser *p, DeclContext ctx)
             // function definition
             .is_def = dec.ty->kind == TYPE_FUNC ? parser_check(p, TK_OBRACE)
                                                 : parser_check(p, TK_EQ),
+            .is_extern = spec.storage == STORAGE_EXTERN,
         });
 
         // Check if we are parsing a function-definition

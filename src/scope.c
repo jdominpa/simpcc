@@ -3,6 +3,7 @@
 #include <assert.h>
 #include <string.h>
 
+#include "ast.h"
 #include "ast_print.h"
 #include "common.h"
 
@@ -111,6 +112,20 @@ Symbol *scope_add_sym(Arena *a, Scope *sc, Symbol sym)
                     !(sc->items[i]->is_def && sym.is_def)) {
                     sc->items[i]->is_def |= sym.is_def;
                     return sc->items[i];
+                }
+                if (sym.kind == SYMBOL_VAR) {
+                    // At file scope, a variable redeclaration is valid as long
+                    // as not both declarations of the variable have
+                    // initializers
+                    if (sc->depth == 0 && !(sc->items[i]->is_def && sym.is_def)) {
+                        sc->items[i]->is_def |= sym.is_def;
+                        return sc->items[i];
+                    }
+                    // At block scope, a variable redeclaration is only valid if
+                    // both of its declarations have the `extern` storage
+                    // specifier
+                    if (sc->depth > 0 && sc->items[i]->is_extern && sym.is_extern)
+                        return sc->items[i];
                 }
                 diag_fatal_at(sym.loc, "redefinition of symbol `%s`",
                               sym.name);
